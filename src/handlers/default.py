@@ -285,9 +285,16 @@ async def profile_link(message: Message, bot: Bot):
 
 @default_router.message(F.text == '🔥Реферальная программа')
 async def profile_link(message: Message, bot: Bot):
-   # user = DbUser(user_id=message.from_user.id).select_user()
-    await DbUser(user_id=message.from_user.id).set_state('')
-    user = await DbUser(user_id=message.from_user.id).select_user()
+    invite_button = InlineKeyboardButton(text="Пригласить друга", callback_data="invite_friend")
+    create_team_button = InlineKeyboardButton(text="Создать команду", callback_data="create_team")
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[invite_button, create_team_button]])  # Правильная структура    
+    await message.answer("Выберите действие:", reply_markup=keyboard)
+
+@default_router.callback_query(F.data == 'invite_friend')
+async def invite_friend(callback_query: CallbackQuery, bot: Bot):
+    await DbUser(user_id=callback_query.from_user.id).set_state('')
+    user = await DbUser(user_id=callback_query.from_user.id).select_user()
     referral_link = f"https://t.me/CV_club_bot/start="
     for i in str(user.user_id):
         referral_link += ref_hash[str(i)]
@@ -297,14 +304,46 @@ async def profile_link(message: Message, bot: Bot):
             f"Что такое рефералы?\n"
             f"Рефералы – это люди, которые присоединились к нашему клубу благодаря вашей рекомендации. Каждый приведенный друг может приносить вам вознаграждение!\n\n"
             f"Ваши достижения:\n"
-            f"- Приведено рефералов: {user.referrals_count}\n"
-            f"- Активных рефералов в клубе: {user.active_referrals}\n\n"
+            f"- Приведено рефералов: {user.referals_count}\n"
+            f"- Активных рефералов в клубе: {user.active_referals}\n\n"
             f"📈 Ваши награды:\n"
             f"Вы можете просмотреть свои награды за рефералов по команде: /rewards\n\n"
             f"💰 Вознаграждение за приглашенное лицо:\n"
             f"За каждого реферала вы получаете 30% от суммы, которую он потратит. Вы можете выбрать, оставить все деньги себе или отдать часть как скидку вашему рефералу."
         )
-    await message.answer(reply_message)
+    await callback_query.message.answer(reply_message)
+    await callback_query.answer()
+
+@default_router.callback_query(F.data == 'create_team')
+async def create_team(callback_query: CallbackQuery, bot: Bot):
+    # Здесь может быть логика для создания команды
+    await callback_query.message.answer("Функция создания команды еще не реализована.")
+    await callback_query.answer()
+
+# @default_router.message(F.text == '🔥Реферальная программа')
+# async def profile_link(message: Message, bot: Bot):
+#    # user = DbUser(user_id=message.from_user.id).select_user()
+#     await DbUser(user_id=message.from_user.id).set_state('')
+#     user = await DbUser(user_id=message.from_user.id).select_user()
+#     print('после этого')
+#     print(user)
+#     referral_link = f"https://t.me/CV_club_bot/start="
+#     for i in str(user.user_id):
+#         referral_link += ref_hash[str(i)]
+
+#     reply_message = (
+#             f"🌟 Ваш персональный реферальный код: {referral_link} 🌟\n\n"
+#             f"Что такое рефералы?\n"
+#             f"Рефералы – это люди, которые присоединились к нашему клубу благодаря вашей рекомендации. Каждый приведенный друг может приносить вам вознаграждение!\n\n"
+#             f"Ваши достижения:\n"
+#             f"- Приведено рефералов: {user.referals_count}\n"
+#             f"- Активных рефералов в клубе: {user.active_referals}\n\n"
+#             f"📈 Ваши награды:\n"
+#             f"Вы можете просмотреть свои награды за рефералов по команде: /rewards\n\n"
+#             f"💰 Вознаграждение за приглашенное лицо:\n"
+#             f"За каждого реферала вы получаете 30% от суммы, которую он потратит. Вы можете выбрать, оставить все деньги себе или отдать часть как скидку вашему рефералу."
+#         )
+#     await message.answer(reply_message)
     
     
 @default_router.callback_query(lambda query: query.data == 'jojoreference')
