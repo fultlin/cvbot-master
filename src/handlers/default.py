@@ -99,7 +99,7 @@ async def error_handler(event: ErrorEvent, bot: Bot):
     error_info = f"⚠️ An error occurred: {event.exception}.\n\nStack trace:\n```{short_traceback}```"
 
     await bot.send_message(
-        chat_id=8175097513,
+        # chat_id=8175097513,
         text=error_info,
         parse_mode='Markdown'
     )
@@ -166,9 +166,10 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
             inviter_user = await DbUser(user_id=int(inviter_id)).select_user()
             #? не прибавляет значение, похоже не видит столбец 
             if inviter_user:
-                current_referals_count = inviter_user.referals_count
-                new_referals_count = current_referals_count + 1
-                await inviter_user.update_record(referals_count=new_referals_count)
+                # current_referals_count = inviter_user.referals_count
+                # new_referals_count = current_referals_count + 1
+                # await inviter_user.update_record(referals_count=new_referals_count)
+                pass
 
         type_of_pay = command.args
         if type_of_pay == 'club':
