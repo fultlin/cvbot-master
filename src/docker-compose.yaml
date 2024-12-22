@@ -1,10 +1,23 @@
 services:
+  db:
+    image: postgres:latest
+    container_name: postgresql
+    environment:
+      POSTGRES_USER: postgres  # замените на имя пользователя базы данных
+      POSTGRES_PASSWORD: adminkoshi  # замените на пароль базы данных
+      POSTGRES_DB: postgres  # замените на имя базы данных
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data:/var/lib/postgresql/data
+      
   volium_client:
     container_name: volium_client
     build:
-      context: .
+      context: ../  # контекст сборки - корень проекта (один уровень выше, чем папка src)
+      dockerfile: ./Dockerfile  # путь к Dockerfile из директории src
     restart: always
     environment:
       - NODE_ENV=production
     ports:
-      - 3000:3000
+      - "3000:3000"

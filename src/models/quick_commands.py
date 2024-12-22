@@ -5,6 +5,7 @@ from typing import Optional, Union, List
 from asyncpg import UniqueViolationError
 from sqlalchemy import and_, case
 from gino import Gino
+from models.schemas.team import TeamSchema
 from models.schemas.user import UserSchema
 from models.schemas.message import MessageSchema
 from models.schemas.settings import SettingSchema
@@ -348,12 +349,13 @@ class ThirdRecent:
 
 
 class DbUser:
-    def __init__(self, user_id: Optional[int] = None, role: Optional[str] = None, username: Optional[str] = None, name: Optional[str] = None, parent: Optional[int] = 0):
+    def __init__(self, user_id: Optional[int] = None, role: Optional[str] = None, username: Optional[str] = None, name: Optional[str] = None, parent: Optional[int] = 0, referals_count: Optional[int] = 0):
         self.user_id = user_id
         self.role = role
         self.username = username
         self.name = name
         self.parent = parent
+        self.referals_count = referals_count
     async def add(self):
         try:
             user = UserSchema(user_id=self.user_id, role=self.role, username=self.username, name=self.name, parent=self.parent)
@@ -422,6 +424,13 @@ class DbUser:
         try:
             user = await self.select_user()
             return user.state
+        except Exception:
+            return False
+
+    async def get_referals_count(self):
+        try:
+            user = await self.select_user()
+            return user.referals_count
         except Exception:
             return False
 
@@ -661,5 +670,29 @@ class DbPay:
     async def get_pays_after_date(self, date: str):
         try:
             return await PaySchema.query.where(PaySchema.end_date > date).order_by(PaySchema.plan).gino.all()
+        except Exception:
+            return False
+
+class DbTeam:
+    def __init__(self, team_id: Optional[int] = None):
+        self.team_id = team_id
+
+    async def add_team(self, **kwargs):
+        try:
+            team = TeamSchema(**kwargs)
+            return await team.create()
+        except Exception:
+            return False
+
+    async def select_team(self):
+        try:
+            return await TeamSchema.query.where(TeamSchema.id == self.team_id).gino.first()
+        except Exception:
+            return False
+
+    async def update_team(self, **kwargs):
+        try:
+            team = await self.select_team()
+            return await team.update(**kwargs).apply()
         except Exception:
             return False
