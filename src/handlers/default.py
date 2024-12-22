@@ -13,7 +13,7 @@ from keyboards.main import get_menu_kb, get_close_community_kb, get_club_kb, get
     get_confirm_kb, get_back_kb, main_menu, my_profile, get_utc_kb, change_language
 import traceback
 from aiogram import Router, Bot, F
-from aiogram.types import Message, CallbackQuery, FSInputFile, MessageEntity, BotCommand
+from aiogram.types import Message, CallbackQuery, FSInputFile, MessageEntity, BotCommand, ReplyKeyboardRemove
 
 from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton, KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
@@ -23,7 +23,7 @@ from aiogram.utils.deep_linking import decode_payload
 
 from middlewares.google_sheet import SheetMiddleware
 from middlewares.update_online import UpdateOnlineMiddleware
-from models.quick_commands import DbUser, DbMessage, DbSetting, DbPay
+from models.quick_commands import DbTeam, DbUser, DbMessage, DbSetting, DbPay
 from models.schemas.promos import PromosSchema
 from models.schemas.settings import SettingSchema
 
@@ -171,25 +171,59 @@ async def default_handler(message: Message, bot: Bot) -> None:
     usr = await user.select_user()
     ans = ''
     payload = message.text.split('=')
+
     # Получаем аргументы из команды /start
     if len(payload) > 1:
-        # Декодирование реферального кода
         referred_user_id = payload[1]
         for i in str(referred_user_id):
             ans += str(get_first_key_by_value(ref_hash, i))
     else:
         ans = 0
-            
-    
+
+    # Если пользователь не существует, добавляем его
     if not usr:
-        user = DbUser(user_id=message.from_user.id, role='user', username=message.from_user.username, name=message.from_user.full_name, parent=int(ans))
+        user = DbUser(
+            user_id=message.from_user.id,
+            role='user',
+            username=message.from_user.username,
+            name=message.from_user.full_name,
+            parent=int(ans)
+        )
         await user.add()
         usr = await user.select_user()
-        
-        if len(payload) > 1: 
-            par = await DbUser(user_id=int(ans)).select_user()
-            await DbUser(user_id=int(ans)).update_record(referrals_count=par.referrals_count + 1)
-            await message.answer(f"Вы пришли по реферальной ссылке от пользователя ID: {ans}")
+
+        # Декодирование реферального кода, если передан payload
+        if len(payload) > 1:
+            if payload[1].startswith('team_'):
+                team_id = int(payload[1].replace('team_', ''))
+                team = await DbTeam(team_id=team_id).select_team()
+
+                if not team:
+                    await message.answer("Эта команда больше не существует.")
+                    return
+
+                members = json.loads(team.members_id)
+                if len(members) >= team.members_count:
+                    await message.answer("Команда уже заполнена.")
+                    return
+
+                if message.from_user.id in members:
+                    await message.answer("Вы уже находитесь в этой команде.")
+                    return
+
+                # Добавление пользователя в команду
+                members.append(message.from_user.id)
+                await DbTeam(team_id=team_id).update_record(
+                    members_id=json.dumps(members)  # Обновляем список участников
+                )
+                await message.answer(f"Вы успешно добавлены в команду {team_id}!")
+
+            else:
+                # Обработка реферальной ссылки
+                par = await DbUser(user_id=int(ans)).select_user()
+                if par:
+                    await DbUser(user_id=int(ans)).update_record(referrals_count=par.referrals_count + 1)
+                    await message.answer(f"Вы пришли по реферальной ссылке от пользователя ID: {ans}")
 
     commands = [
         BotCommand(
@@ -283,19 +317,22 @@ async def profile_link(message: Message, bot: Bot):
             keyboard = get_menu_kb()
     await bot.send_message(message.from_user.id, f'<b>🗃 Ваша подписка:</b>\n\n{ans}', reply_markup=keyboard, parse_mode='HTML')
 
-@default_router.message(F.text == '🔥Реферальная программа')
-async def profile_link(message: Message, bot: Bot):
+async def send_profile_link(user_id: int, bot: Bot):
     invite_button = InlineKeyboardButton(text="Пригласить друга", callback_data="invite_friend")
     create_team_button = InlineKeyboardButton(text="Создать команду", callback_data="create_team")
     
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[invite_button, create_team_button]])  # Правильная структура    
-    await message.answer("Выберите действие:", reply_markup=keyboard)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[invite_button, create_team_button]])    
+    await bot.send_message(user_id, "Выберите действие:", reply_markup=keyboard)
+
+@default_router.message(F.text == '🔥Реферальная программа')
+async def profile_link(message: Message, bot: Bot):
+    await send_profile_link(message.from_user.id, bot)
 
 @default_router.callback_query(F.data == 'invite_friend')
 async def invite_friend(callback_query: CallbackQuery, bot: Bot):
     await DbUser(user_id=callback_query.from_user.id).set_state('')
     user = await DbUser(user_id=callback_query.from_user.id).select_user()
-    referral_link = f"https://t.me/CV_club_bot/start="
+    referral_link = f"https://t.me/svmaster_bot/start="
     for i in str(user.user_id):
         referral_link += ref_hash[str(i)]
 
@@ -316,9 +353,58 @@ async def invite_friend(callback_query: CallbackQuery, bot: Bot):
 
 @default_router.callback_query(F.data == 'create_team')
 async def create_team(callback_query: CallbackQuery, bot: Bot):
-    # Здесь может быть логика для создания команды
-    await callback_query.message.answer("Функция создания команды еще не реализована.")
+    
+    await DbUser(user_id=callback_query.from_user.id).set_state('awaiting_team_creation')
+
+    await callback_query.message.answer(
+        "Введите максимальное количество участников в вашей команде (например, 4, 8, 12)."
+    )
     await callback_query.answer()
+
+@default_router.message(lambda msg: msg.text.isdigit())
+async def finalize_team_creation(message: Message, bot: Bot):
+    # Проверяем, находится ли пользователь в состоянии создания команды
+    user = await DbUser(user_id=message.from_user.id).select_user()
+    if user.state != 'awaiting_team_creation':
+        await message.answer("Неверный этап процесса. Пожалуйста, начните с команды 'Создать команду'.")
+        return
+
+    max_members = int(message.text)
+    if max_members < 1:
+        await message.answer("Количество участников должно быть больше нуля.")
+        return
+
+    invite_link = f"https://t.me/svmaster_bot/start=team_"
+    for i in str(user.user_id):
+        invite_link += ref_hash[str(i)]
+
+    # Создаем модель команды
+    new_team = {
+        "id": user.user_id,  # Уникальный ID команды (равен ID владельца)
+        "invite_link": invite_link,
+        "owner_id": user.user_id,
+        "members_id": json.dumps([user.user_id]),  # Храним список участников как JSON-строку
+        "members_count": max_members,
+        "current_members": 1,
+    }
+
+    await DbTeam(team_id=user.user_id).add_team(**new_team)
+
+    # Обновляем данные пользователя
+    await DbUser(user_id=message.from_user.id).update_record(state='main_menu')
+
+    # Подтверждение пользователю
+    await message.answer(
+        f"🎉 Команда успешно создана!\n\n"
+        f"🌟 Ссылка для приглашения: {invite_link}\n"
+        f"👥 Максимальное количество участников: {max_members}\n"
+        f"🚀 Добавляйте участников и получайте бонусы!"
+    )
+
+
+@default_router.message(Command(commands=["rewards"]))
+async def handle_awards_command(message: Message):
+    await message.answer("Ещё не реализовано.")
 
 # @default_router.message(F.text == '🔥Реферальная программа')
 # async def profile_link(message: Message, bot: Bot):
@@ -349,7 +435,7 @@ async def create_team(callback_query: CallbackQuery, bot: Bot):
 @default_router.callback_query(lambda query: query.data == 'jojoreference')
 async def reference(query: CallbackQuery, bot: Bot) -> None:
     await DbUser(user_id=query.from_user.id).set_state('')
-    await bot.send_message(query.from_user.id, "🔥Скоро будет жарко")
+    await send_profile_link(query.from_user.id, bot)
     await bot.answer_callback_query(query.id, '')
 
 @default_router.callback_query(lambda query: query.data == 'email')

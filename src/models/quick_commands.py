@@ -5,6 +5,7 @@ from typing import Optional, Union, List
 from asyncpg import UniqueViolationError
 from sqlalchemy import and_, case
 from gino import Gino
+from models.schemas.team import TeamSchema
 from models.schemas.user import UserSchema
 from models.schemas.message import MessageSchema
 from models.schemas.settings import SettingSchema
@@ -661,5 +662,29 @@ class DbPay:
     async def get_pays_after_date(self, date: str):
         try:
             return await PaySchema.query.where(PaySchema.end_date > date).order_by(PaySchema.plan).gino.all()
+        except Exception:
+            return False
+
+class DbTeam:
+    def __init__(self, team_id: Optional[int] = None):
+        self.team_id = team_id
+
+    async def add_team(self, **kwargs):
+        try:
+            team = TeamSchema(**kwargs)
+            return await team.create()
+        except Exception:
+            return False
+
+    async def select_team(self):
+        try:
+            return await TeamSchema.query.where(TeamSchema.id == self.team_id).gino.first()
+        except Exception:
+            return False
+
+    async def update_team(self, **kwargs):
+        try:
+            team = await self.select_team()
+            return await team.update(**kwargs).apply()
         except Exception:
             return False
