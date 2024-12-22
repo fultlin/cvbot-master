@@ -52,9 +52,17 @@ ref_hash = {
     '9': 'T'
 }
 
+reverse_ref_hash = {v: k for k, v in ref_hash.items()}
+
 def get_first_key_by_value(dictionary, value):
     return next((key for key, val in dictionary.items() if val == value), None)
 
+def extract_referral_id(referral_link):
+    referral_id = ""
+    for i in referral_link:
+        if i in reverse_ref_hash:
+            referral_id += reverse_ref_hash[i]
+    return referral_id
 
 time_zones = {
     1: "UTC-12:00 (Baker Island Time)",
@@ -148,22 +156,47 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
 
     if not await user.select_user():
         await user.add()
-    print(1)
-    type_of_pay = command.args
 
-    if type_of_pay == 'club':
-        text, entity = await get_message('private_community')
-        video_setting = await SettingSchema.query.where(SettingSchema.key =='about_club_video_id').gino.first()
+        referral_link = command.args
+        if (referral_link):
+          inviter_id = extract_referral_id(referral_link)
+          if user.user_id != inviter_id:
+            await bot.send_message(message.from_user.id, f"Вы пришли по реферальной ссылке от пользователя ID: {inviter_id}")
 
-        video_id = video_setting.value if video_setting else 'BAACAgIAAxkBAAEBL61m4HxpcEZBsb6tEusFxepq56PsKQACRFMAAoHrCUuQW9rp0zVCJDYE'
+            inviter_user = await DbUser(user_id=int(inviter_id)).select_user()
+            #? не прибавляет значение, похоже не видит столбец 
+            if inviter_user:
+                current_referals_count = inviter_user.referals_count
+                new_referals_count = current_referals_count + 1
+                await inviter_user.update_record(referals_count=new_referals_count)
 
-        await bot.send_video(
-            message.from_user.id,
-            video=video_id,
-            caption=text,
-            caption_entities=entity,
-            reply_markup=get_club_kb()
-        )
+        type_of_pay = command.args
+        if type_of_pay == 'club':
+            text, entity = await get_message('private_community')
+            video_setting = await SettingSchema.query.where(SettingSchema.key =='about_club_video_id').gino.first()
+
+            video_id = video_setting.value if video_setting else 'BAACAgIAAxkBAAEBL61m4HxpcEZBsb6tEusFxepq56PsKQACRFMAAoHrCUuQW9rp0zVCJDYE'
+
+            await bot.send_video(
+                message.from_user.id,
+                video=video_id,
+                caption=text,
+                caption_entities=entity,
+                reply_markup=get_club_kb()
+            )
+    else:
+      await bot.send_message(message.from_user.id, 'С возвращением!', reply_markup=main_menu())
+
+    text, entity = await get_message('start')
+    await bot.send_message(message.from_user.id, 'Добро пожаловать', reply_markup=main_menu())
+
+    await bot.send_photo(
+        message.from_user.id,
+        photo=FSInputFile('media/start.png'),
+        caption=text,
+        caption_entities=entity,
+        reply_markup=get_menu_kb(),
+    )
 
 @default_router.message(CommandStart())
 async def default_handler(message: Message, bot: Bot) -> None:
@@ -191,9 +224,11 @@ async def default_handler(message: Message, bot: Bot) -> None:
         )
         await user.add()
         usr = await user.select_user()
-
+        
+        #! Перенести наверх в deep_link 
         # Декодирование реферального кода, если передан payload
         if len(payload) > 1:
+            print(payload)
             if payload[1].startswith('team_'):
                 team_id = int(payload[1].replace('team_', ''))
                 team = await DbTeam(team_id=team_id).select_team()
@@ -332,7 +367,7 @@ async def profile_link(message: Message, bot: Bot):
 async def invite_friend(callback_query: CallbackQuery, bot: Bot):
     await DbUser(user_id=callback_query.from_user.id).set_state('')
     user = await DbUser(user_id=callback_query.from_user.id).select_user()
-    referral_link = f"https://t.me/svmaster_bot/start="
+    referral_link = f"https://t.me/svmaster_bot?start="
     for i in str(user.user_id):
         referral_link += ref_hash[str(i)]
 
@@ -340,9 +375,6 @@ async def invite_friend(callback_query: CallbackQuery, bot: Bot):
             f"🌟 Ваш персональный реферальный код: {referral_link} 🌟\n\n"
             f"Что такое рефералы?\n"
             f"Рефералы – это люди, которые присоединились к нашему клубу благодаря вашей рекомендации. Каждый приведенный друг может приносить вам вознаграждение!\n\n"
-            f"Ваши достижения:\n"
-            f"- Приведено рефералов: {user.referals_count}\n"
-            f"- Активных рефералов в клубе: {user.active_referals}\n\n"
             f"📈 Ваши награды:\n"
             f"Вы можете просмотреть свои награды за рефералов по команде: /rewards\n\n"
             f"💰 Вознаграждение за приглашенное лицо:\n"
@@ -374,7 +406,7 @@ async def finalize_team_creation(message: Message, bot: Bot):
         await message.answer("Количество участников должно быть больше нуля.")
         return
 
-    invite_link = f"https://t.me/svmaster_bot/start=team_"
+    invite_link = f"https://t.me/svmaster_bot?start=team_"
     for i in str(user.user_id):
         invite_link += ref_hash[str(i)]
 
@@ -404,7 +436,15 @@ async def finalize_team_creation(message: Message, bot: Bot):
 
 @default_router.message(Command(commands=["rewards"]))
 async def handle_awards_command(message: Message):
-    await message.answer("Ещё не реализовано.")
+    user = await DbUser(user_id=message.from_user.id).select_user()
+    
+    reply_message = (
+      f"Ваши достижения:\n"
+      f"- Приведено рефералов: {user.referals_count}\n"
+      f"- Активных рефералов в клубе: {user.active_referals}\n\n"
+    )
+
+    await message.answer(reply_message)
 
 # @default_router.message(F.text == '🔥Реферальная программа')
 # async def profile_link(message: Message, bot: Bot):
