@@ -188,7 +188,7 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
               
 
         # Приглашение по ссылке
-        if (referral_link):
+        if (referral_link) and not referral_link.startswith('team_'):
           inviter_id = extract_referral_id(referral_link)
           if user.user_id != inviter_id:
             await bot.send_message(message.from_user.id, f"Вы пришли по реферальной ссылке от пользователя ID: {inviter_id}")
