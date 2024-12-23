@@ -163,29 +163,23 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
         if referral_link and referral_link.startswith('team_'):
             team_link = referral_link[5:]
             team_id = extract_referral_id(team_link)
-            print(team_id)
             if user.user_id != team_id:
               team = await DbTeam(team_id=int(team_id)).select_team()
               if team:
-                  pass
-              #     #? нужно добавить столбец и записывать в него id команды в которой состоит user 
-              #     # await DbUser(user_id=message.from_user.id).update_record(team_id=team_id)
+                  await DbUser(user_id=message.from_user.id).update_record(team_id=int(team_id))
 
-                  # members = json.loads(team.members_id)
-              #     if len(members) >= team.members_count:
-              #         await message.answer("Команда уже заполнена.")
-              #         return
-
-              #     if message.from_user.id in members:
-              #         await message.answer("Вы уже находитесь в этой команде.")
-              #         return
-
-              #     # Добавление пользователя в команду
-              #     members.append(message.from_user.id)
-              #     await DbTeam(team_id=team_id).update_record(members_id=json.dumps(members))
-              #     await message.answer(f"Вы успешно добавлены в команду!")
-              # else:
-              #     await bot.send_message(message.from_user.id, "Команда не найдена")
+                  members = json.loads(team.members_id)
+                  if len(members) >= team.members_count:
+                      await message.answer("Команда уже заполнена.")
+                  else:
+                    members.append(message.from_user.id)
+                    print(members)
+                    #? почему-то список не обновляется 
+                    await DbTeam(team_id=team_id).update_record(members_id=json.dumps(members))
+                    await bot.send_message(message.from_user.id, f"Вы вступили в команду ID: {team_id}")
+                  
+              else:
+                  await bot.send_message(message.from_user.id, "Команда не найдена")
               
 
         # Приглашение по ссылке
@@ -385,6 +379,8 @@ async def finalize_team_creation(message: Message, bot: Bot):
     }
 
     await DbTeam(team_id=user.user_id).add_team(**new_team)
+
+    await DbUser(user_id=message.from_user.id).update_record(team_id=user.user_id)
 
     # Обновляем данные пользователя
     await DbUser(user_id=message.from_user.id).update_record(state='main_menu')

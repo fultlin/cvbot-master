@@ -691,9 +691,13 @@ class DbTeam:
         except Exception:
             return False
 
-    async def update_team(self, **kwargs):
+    async def update_record(self, **kwargs):
+        if not kwargs:
+            return False
+
         try:
             team = await self.select_team()
             return await team.update(**kwargs).apply()
         except Exception:
+            print(Exception)
             return False
