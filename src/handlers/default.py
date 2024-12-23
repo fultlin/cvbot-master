@@ -164,7 +164,7 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
             await bot.send_message(message.from_user.id, f"Вы пришли по реферальной ссылке от пользователя ID: {inviter_id}")
 
             inviter_user = await DbUser(user_id=int(inviter_id)).select_user()
-            #? не прибавляет значение, похоже не видит столбец 
+
             if inviter_user:
                 current_referals_count = inviter_user.referals_count
                 new_referals_count = current_referals_count + 1

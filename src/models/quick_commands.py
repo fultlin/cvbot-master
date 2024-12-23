@@ -356,6 +356,7 @@ class DbUser:
         self.name = name
         self.parent = parent
         self.referals_count = referals_count
+        
     async def add(self):
         try:
             user = UserSchema(user_id=self.user_id, role=self.role, username=self.username, name=self.name, parent=self.parent)
