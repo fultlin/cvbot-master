@@ -163,6 +163,7 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
         if referral_link and referral_link.startswith('team_'):
             team_link = referral_link[5:]
             team_id = extract_referral_id(team_link)
+            print(team_id)
             if user.user_id != team_id:
               team = await DbTeam(team_id=int(team_id)).select_team()
               if team:
