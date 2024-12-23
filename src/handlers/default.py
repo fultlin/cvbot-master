@@ -157,8 +157,37 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
     if not await user.select_user():
         await user.add()
 
-        # Реферальная ссылка
         referral_link = command.args
+
+        # Приглашение по ссылке в команду
+        if referral_link and referral_link.startswith('team_'):
+            team_link = referral_link[5:]
+            team_id = extract_referral_id(team_link)
+            if user.user_id != team_id:
+              team = await DbTeam(team_id=int(team_id)).select_team()
+              if team:
+                  pass
+              #     #? нужно добавить столбец и записывать в него id команды в которой состоит user 
+              #     # await DbUser(user_id=message.from_user.id).update_record(team_id=team_id)
+
+                  # members = json.loads(team.members_id)
+              #     if len(members) >= team.members_count:
+              #         await message.answer("Команда уже заполнена.")
+              #         return
+
+              #     if message.from_user.id in members:
+              #         await message.answer("Вы уже находитесь в этой команде.")
+              #         return
+
+              #     # Добавление пользователя в команду
+              #     members.append(message.from_user.id)
+              #     await DbTeam(team_id=team_id).update_record(members_id=json.dumps(members))
+              #     await message.answer(f"Вы успешно добавлены в команду!")
+              # else:
+              #     await bot.send_message(message.from_user.id, "Команда не найдена")
+              
+
+        # Приглашение по ссылке
         if (referral_link):
           inviter_id = extract_referral_id(referral_link)
           if user.user_id != inviter_id:
@@ -170,8 +199,8 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
                 new_referals_count = current_referals_count + 1
                 await DbUser(user_id=int(inviter_id)).update_record(referals_count=new_referals_count)
 
-        type_of_pay = command.args
-        if type_of_pay == 'club':
+        # Club
+        if referral_link == 'club':
             text, entity = await get_message('private_community')
             video_setting = await SettingSchema.query.where(SettingSchema.key =='about_club_video_id').gino.first()
 
@@ -185,6 +214,8 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
                 reply_markup=get_club_kb()
             )
         text, entity = await get_message('start')
+
+        # Стартовое сообщение
         await bot.send_message(message.from_user.id, 'Добро пожаловать', reply_markup=main_menu())
 
         await bot.send_photo(
@@ -195,6 +226,7 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
             reply_markup=get_menu_kb(),
     )
     else:
+      # Если пользователь уже был в бд, но по каким-то причинам удалял чат или блокировал бота
       await bot.send_message(message.from_user.id, 'С возвращением!', reply_markup=main_menu())
 
     
@@ -203,16 +235,7 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
 async def default_handler(message: Message, bot: Bot) -> None:
     user = DbUser(user_id=message.from_user.id)
     usr = await user.select_user()
-    ans = ''
-    payload = message.text.split('=')
-
-    # Получаем аргументы из команды /start
-    if len(payload) > 1:
-        referred_user_id = payload[1]
-        for i in str(referred_user_id):
-            ans += str(get_first_key_by_value(ref_hash, i))
-    else:
-        ans = 0
+    ans = 0
 
     # Если пользователь не существует, добавляем его
     if not usr:
@@ -226,41 +249,6 @@ async def default_handler(message: Message, bot: Bot) -> None:
         await user.add()
         usr = await user.select_user()
         
-        #! Перенести наверх в deep_link 
-        # Декодирование реферального кода, если передан payload
-        if len(payload) > 1:
-            print(payload)
-            if payload[1].startswith('team_'):
-                team_id = int(payload[1].replace('team_', ''))
-                team = await DbTeam(team_id=team_id).select_team()
-
-                if not team:
-                    await message.answer("Эта команда больше не существует.")
-                    return
-
-                members = json.loads(team.members_id)
-                if len(members) >= team.members_count:
-                    await message.answer("Команда уже заполнена.")
-                    return
-
-                if message.from_user.id in members:
-                    await message.answer("Вы уже находитесь в этой команде.")
-                    return
-
-                # Добавление пользователя в команду
-                members.append(message.from_user.id)
-                await DbTeam(team_id=team_id).update_record(
-                    members_id=json.dumps(members)  # Обновляем список участников
-                )
-                await message.answer(f"Вы успешно добавлены в команду {team_id}!")
-
-            else:
-                # Обработка реферальной ссылки
-                par = await DbUser(user_id=int(ans)).select_user()
-                if par:
-                    await DbUser(user_id=int(ans)).update_record(referrals_count=par.referrals_count + 1)
-                    await message.answer(f"Вы пришли по реферальной ссылке от пользователя ID: {ans}")
-
     commands = [
         BotCommand(
             command='/start',
@@ -275,32 +263,6 @@ async def default_handler(message: Message, bot: Bot) -> None:
             description='Оплатить подписку'
         ),
     ]
-
-    # if usr.role == 'admin':
-    #     commands.append(BotCommand(
-    #         command='/edit',
-    #         description='Напишите ответом на сообщение, которое хотите изменить'
-    #     ))
-    #     commands.append(BotCommand(
-    #         command='/set_price',
-    #         description='Установить цены на подписку'
-    #     ))
-    #     commands.append(BotCommand(
-    #         command='/mailing',
-    #         description='Рассылка сообщений'
-    #     ))
-    #     commands.append(BotCommand(
-    #         command='/list_promos',
-    #         description='Список кодов'
-    #     ))
-    #     commands.append(BotCommand(
-    #         command='/add_promo',
-    #         description='Добавить промокод'
-    #     ))
-    #     commands.append(BotCommand(
-    #         command='/del_promo',
-    #         description='Удалить промокод'
-    #     ))
 
     await bot.set_my_commands(commands)
 

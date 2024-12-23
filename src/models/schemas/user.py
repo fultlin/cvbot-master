@@ -9,6 +9,7 @@ class UserSchema(TimedBaseModel):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     language = Column(String, default='ru')
     user_id = Column(BigInteger, unique=True)
+    # team_id = Column(BigInteger)
     role = Column(String, default='user')
     sysadmin = Column(Boolean, default=False)
     state = Column(String, default='main_menu')
