@@ -160,30 +160,38 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
         referral_link = command.args
 
         # Приглашение по ссылке в команду
-        if referral_link and referral_link.startswith('team_'):
+        if referral_link and referral_link.startswith('team_') and not referral_link.startswith('club'):
             team_link = referral_link[5:]
             team_id = extract_referral_id(team_link)
             if user.user_id != team_id:
               team = await DbTeam(team_id=int(team_id)).select_team()
               if team:
-                  await DbUser(user_id=message.from_user.id).update_record(team_id=int(team_id))
-
-                  members = json.loads(team.members_id)
-                  if len(members) >= team.members_count:
+                  members_id = json.loads(team.members_id)
+                  if len(members_id) >= team.members_count:
                       await message.answer("Команда уже заполнена.")
                   else:
-                    members.append(message.from_user.id)
-                    print(members)
-                    #? почему-то список не обновляется 
-                    await DbTeam(team_id=team_id).update_record(members_id=json.dumps(members))
-                    await bot.send_message(message.from_user.id, f"Вы вступили в команду ID: {team_id}")
+                      if message.from_user.id in members_id:
+                          await message.answer("Вы уже находитесь в этой команде.")
+                      else:
+                          members_id.append(message.from_user.id)
+                          
+                          # Обновляем список участников
+                          update_result = await DbTeam(team_id=int(team_id)).update_record(members_id=json.dumps(members_id))
+                          current_members_count = team.current_members
+                          new_members_count = current_members_count + 1
+                          update_result = await DbTeam(team_id=int(team_id)).update_record(current_members=int(new_members_count))
+                          if update_result:
+                              await DbUser(user_id=message.from_user.id).update_record(team_id=int(team_id))
+                              await bot.send_message(message.from_user.id, f"Вы вступили по реферальной ссылке в команду ID: {team_id}")
+                          else:
+                              await message.answer("Не удалось обновить команду.")
                   
               else:
                   await bot.send_message(message.from_user.id, "Команда не найдена")
               
 
         # Приглашение по ссылке
-        if (referral_link) and not referral_link.startswith('team_'):
+        if (referral_link) and not referral_link.startswith('team_') and not referral_link.startswith('club'):
           inviter_id = extract_referral_id(referral_link)
           if user.user_id != inviter_id:
             await bot.send_message(message.from_user.id, f"Вы пришли по реферальной ссылке от пользователя ID: {inviter_id}")
