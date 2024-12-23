@@ -99,7 +99,7 @@ async def error_handler(event: ErrorEvent, bot: Bot):
     error_info = f"⚠️ An error occurred: {event.exception}.\n\nStack trace:\n```{short_traceback}```"
 
     await bot.send_message(
-        chat_id=8175097513,
+        chat_id=7555401023,
         text=error_info,
         parse_mode='Markdown'
     )
@@ -157,6 +157,7 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
     if not await user.select_user():
         await user.add()
 
+        # Реферальная ссылка
         referral_link = command.args
         if (referral_link):
           inviter_id = extract_referral_id(referral_link)
@@ -164,11 +165,10 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
             await bot.send_message(message.from_user.id, f"Вы пришли по реферальной ссылке от пользователя ID: {inviter_id}")
 
             inviter_user = await DbUser(user_id=int(inviter_id)).select_user()
-
             if inviter_user:
                 current_referals_count = inviter_user.referals_count
                 new_referals_count = current_referals_count + 1
-                await inviter_user.update_record(referals_count=new_referals_count)
+                await DbUser(user_id=int(inviter_id)).update_record(referals_count=new_referals_count)
 
         type_of_pay = command.args
         if type_of_pay == 'club':
@@ -184,19 +184,20 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
                 caption_entities=entity,
                 reply_markup=get_club_kb()
             )
+        text, entity = await get_message('start')
+        await bot.send_message(message.from_user.id, 'Добро пожаловать', reply_markup=main_menu())
+
+        await bot.send_photo(
+            message.from_user.id,
+            photo=FSInputFile('media/start.png'),
+            caption=text,
+            caption_entities=entity,
+            reply_markup=get_menu_kb(),
+    )
     else:
       await bot.send_message(message.from_user.id, 'С возвращением!', reply_markup=main_menu())
 
-    text, entity = await get_message('start')
-    await bot.send_message(message.from_user.id, 'Добро пожаловать', reply_markup=main_menu())
-
-    await bot.send_photo(
-        message.from_user.id,
-        photo=FSInputFile('media/start.png'),
-        caption=text,
-        caption_entities=entity,
-        reply_markup=get_menu_kb(),
-    )
+    
 
 @default_router.message(CommandStart())
 async def default_handler(message: Message, bot: Bot) -> None:
