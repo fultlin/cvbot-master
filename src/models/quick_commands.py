@@ -675,8 +675,9 @@ class DbPay:
             return False
 
 class DbTeam:
-    def __init__(self, team_id: Optional[int] = None):
+    def __init__(self, team_id: Optional[int] = None, owner_id: Optional[int] = None):
         self.team_id = team_id
+        self.owner_id = owner_id
 
     async def add_team(self, **kwargs):
         try:
@@ -687,13 +688,32 @@ class DbTeam:
 
     async def select_team(self):
         try:
-            return await TeamSchema.query.where(TeamSchema.id == self.team_id).gino.first()
-        except Exception:
+            if self.team_id and not self.owner_id:
+                # Выбор команды по team_id
+                return await TeamSchema.query.where(TeamSchema.id == self.team_id).gino.first()
+            elif not self.team_id and self.owner_id:
+                # Выбор всех команд по owner_id
+                return await TeamSchema.query.where(TeamSchema.owner_id == self.owner_id).gino.all()
+            elif self.team_id and self.owner_id:
+                # Выбор команды по team_id и owner_id
+                return await TeamSchema.query.where(
+                    and_(TeamSchema.id == self.team_id, TeamSchema.owner_id == self.owner_id)
+                ).gino.first()
+            else:
+                # Если не указаны ни team_id, ни owner_id, возвращаем None или пустой список
+                return None
+        except Exception as e:
+            print(f"Ошибка при выборке команды: {e}")
             return False
 
-    async def update_team(self, **kwargs):
+
+    async def update_record(self, **kwargs):
+        if not kwargs:
+            return False
+
         try:
             team = await self.select_team()
             return await team.update(**kwargs).apply()
         except Exception:
+            print(Exception)
             return False
