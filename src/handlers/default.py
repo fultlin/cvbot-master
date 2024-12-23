@@ -414,6 +414,22 @@ async def handle_awards_command(message: Message):
 
     await message.answer(reply_message)
 
+@default_router.message(Command(commands=["group_status"]))
+async def handle_group_status(message: Message):
+    await message.answer('Здесь будет информация о текущих групповых акциях и скидках')
+
+    
+@default_router.message(Command(commands=["group_info"]))
+async def handle_group_info(message: Message):
+    user = await DbUser(user_id=message.from_user.id).select_user()
+    team = await DbTeam(team_id=user.team_id).select_team()
+    reply_message = (
+        f"👥 Группа: {team.id}\n"
+        f"Количество человек: {team.current_members}\n"
+        f"Осталось мест: {team.members_count - team.current_members}\n"
+    )
+    await message.answer(reply_message)
+
 # @default_router.message(F.text == '🔥Реферальная программа')
 # async def profile_link(message: Message, bot: Bot):
 #    # user = DbUser(user_id=message.from_user.id).select_user()
