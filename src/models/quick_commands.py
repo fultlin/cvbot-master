@@ -469,15 +469,16 @@ class DbUser:
 
 class DbMessage:
     def __init__(self, key: Optional[str] = None, text: Optional[str] = None, lang: Optional[str] = None,
-                 entity: Optional[str] = None):
+                 entity: Optional[str] = None, image_path: Optional[str] = None):
         self.key = key
         self.text = text
         self.lang = lang
         self.entity = entity
+        self.image_path = image_path
 
     async def add(self):
         try:
-            message = MessageSchema(key=self.key, text=self.text, lang=self.lang, entity=self.entity)
+            message = MessageSchema(key=self.key, text=self.text, lang=self.lang, entity=self.entity, image_path=self.image_path)
             return await message.create()
         except UniqueViolationError:
             return False
@@ -504,8 +505,18 @@ class DbMessage:
 
         try:
             message = await self.select_message()
-            return await message.update(**kwargs).apply()
-        except Exception:
+            print(f"Updating record with values: {kwargs}")  # Логируем значения перед обновлением
+
+            for key, value in kwargs.items():
+                print(f"Key: {key}, Value: {value}, Type: {type(value)}")
+
+            if message:  # Ensure that a message was found
+                print('зашли')
+                await message.update(**kwargs).apply()  # Update the record
+                return True  # Indicate success
+            return False  # No message found to update
+        except Exception as e:
+            print(f"Error updating record: {e}")  # Log error for debugging
             return False
 
     async def get_text(self):

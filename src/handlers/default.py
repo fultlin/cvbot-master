@@ -99,7 +99,7 @@ async def error_handler(event: ErrorEvent, bot: Bot):
     error_info = f"⚠️ An error occurred: {event.exception}.\n\nStack trace:\n```{short_traceback}```"
 
     await bot.send_message(
-        chat_id=7555401023,
+        chat_id=987609477,
         text=error_info,
         parse_mode='Markdown'
     )
@@ -110,27 +110,25 @@ async def error_handler(event: ErrorEvent, bot: Bot):
 
 async def get_message(key: str) -> Tuple[str, List[MessageEntity]]:
     msg = DbMessage(key=key)
-    print(msg)
     msg = await msg.select_message()
-    print(msg)
     entities = []
     try:
         entities_json = json.loads(msg.entity) if msg.entity else []
-    except:
+    except Exception:
         entities_json = []
 
 
     for entity in entities_json:
         entities.append(MessageEntity(**entity))
 
-    return (msg.text if msg.text else 'Сообщение не найдено'), entities
+    return (msg.text if msg.text else 'Сообщение не найдено'), entities, msg.image_path if msg.image_path else None
 
 
 async def contact_handler(message: Message, bot: Bot, uid: int) -> None:
     user = DbUser(user_id=uid)
     await user.set_state('question')
 
-    text, entity = await get_message('contact')
+    text, entity, image_path = await get_message('contact')
 
     root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     file_path = os.path.join(root_dir, 'media', 'contact.png')
@@ -143,7 +141,8 @@ async def contact_handler(message: Message, bot: Bot, uid: int) -> None:
     # Attempt to send the photo
     await bot.send_photo(
         uid,
-        photo=FSInputFile(file_path),
+        # photo=FSInputFile(file_path),
+        photo=FSInputFile(image_path),
         caption=text,
         caption_entities=entity,
         reply_markup=get_back_kb()
@@ -216,14 +215,17 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
                 caption_entities=entity,
                 reply_markup=get_club_kb()
             )
-        text, entity = await get_message('start')
+        text, entity, image_path = await get_message('start')
+
+        print('sasasa')
+        print(text)
 
         # Стартовое сообщение
         await bot.send_message(message.from_user.id, 'Добро пожаловать', reply_markup=main_menu())
 
         await bot.send_photo(
             message.from_user.id,
-            photo=FSInputFile('media/start.png'),
+            photo=FSInputFile(image_path),
             caption=text,
             caption_entities=entity,
             reply_markup=get_menu_kb(),
@@ -269,12 +271,13 @@ async def default_handler(message: Message, bot: Bot) -> None:
 
     await bot.set_my_commands(commands)
 
-    text, entity = await get_message('start')
+    text, entity, image_path= await get_message('start')
+    print(text)
     await bot.send_message(message.from_user.id, 'Добро пожаловать', reply_markup=main_menu())
 
     await bot.send_photo(
         message.from_user.id,
-        photo=FSInputFile('media/start.png'),
+        photo=FSInputFile(image_path),
         caption=text,
         caption_entities=entity,
         reply_markup=get_menu_kb(),
@@ -359,7 +362,7 @@ async def create_team(callback_query: CallbackQuery, bot: Bot):
     )
     await callback_query.answer()
 
-@default_router.message(lambda msg: msg.text.isdigit())
+@default_router.message(lambda msg: msg.text is not None and msg.text.isdigit())
 async def finalize_team_creation(message: Message, bot: Bot):
     # Проверяем, находится ли пользователь в состоянии создания команды
     user = await DbUser(user_id=message.from_user.id).select_user()
@@ -401,6 +404,34 @@ async def finalize_team_creation(message: Message, bot: Bot):
         f"🚀 Добавляйте участников и получайте бонусы!"
     )
 
+@default_router.message(lambda msg: msg.photo is not None)
+async def handle_photo(message: Message, bot: Bot):   
+    user_id = message.from_user.id
+    user = DbUser(user_id=user_id)
+
+    current_state = await user.get_state()
+    key = current_state.split('_')[-1]
+
+    if not key:
+        await message.reply("Ключ не найден. Пожалуйста, сначала установите ключ.")
+        return
+
+    photo = message.photo[-1]
+    file_info = await bot.get_file(photo.file_id)
+    file_path = f"media/{photo.file_id}.png"
+    
+    await bot.download_file(file_info.file_path, destination=file_path)
+
+    msg = DbMessage(key=key)
+
+    # Обновляем путь к файлу в базе данных
+    update_successful = await msg.update_record(image_path=file_path)
+
+    if update_successful:
+        await message.answer(f"Фото успешно загружено и сохранено как {file_path} для ключа <code>{key}</code>.", parse_mode='HTML')
+    else:
+        print(update_successful)
+        await message.answer("Не удалось обновить запись в базе данных.", parse_mode='HTML')
 
 @default_router.message(Command(commands=["rewards"]))
 async def handle_awards_command(message: Message):
@@ -565,7 +596,7 @@ async def contact_handler_query(query: CallbackQuery, bot: Bot) -> None:
 
 @default_router.callback_query(lambda query: query.data == 'education')
 async def education_handler(query: CallbackQuery, bot: Bot) -> None:
-    text, entity = await get_message('education')
+    text, entity, image_path = await get_message('education')
     # await bot.send_message(
     #     query.from_user.id,
     #     text=text,
@@ -575,7 +606,7 @@ async def education_handler(query: CallbackQuery, bot: Bot) -> None:
 
     await bot.send_photo(
         query.from_user.id,
-        photo=FSInputFile('media/education.png'),
+        photo=FSInputFile(image_path),
         caption=text,
         caption_entities=entity,
         reply_markup=get_close_community_kb(),
@@ -733,10 +764,11 @@ async def pay_handler1(query: CallbackQuery, bot: Bot) -> None:
     if not pay_current:
         await pay.add()
 
-    text, entity = await get_message('pay')
+    text, entity, image_path = await get_message('pay')
     await bot.send_photo(
         query.from_user.id,
-        photo=FSInputFile('media/wallet.png'),
+        # photo=FSInputFile('media/wallet.png'),
+        photo=FSInputFile(image_path),
         caption=text,
         caption_entities=entity,
     )
@@ -826,11 +858,11 @@ async def back_handler(query: CallbackQuery, bot: Bot) -> None:
     #     )
     # )
 
-    text, entity = await get_message('start')
+    text, entity, image_path = await get_message('start')
     await user.set_state('')
     await bot.send_photo(
         query.from_user.id,
-        photo=FSInputFile('media/start.png'),
+        photo=FSInputFile(image_path),
         caption=text,
         caption_entities=entity,
         reply_markup=get_menu_kb(),
