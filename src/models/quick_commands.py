@@ -486,6 +486,7 @@ class DbMessage:
     async def select_message(self):
         try:
             if self.key:
+                print('schema',await MessageSchema.query.where(MessageSchema.key == self.key).gino.first())
                 return await MessageSchema.query.where(MessageSchema.key == self.key).gino.first()
             if self.text:
                 return await MessageSchema.query.where(MessageSchema.text == self.text).gino.first()
@@ -509,7 +510,7 @@ class DbMessage:
 
             for key, value in kwargs.items():
                 print(f"Key: {key}, Value: {value}, Type: {type(value)}")
-
+            
             if message:  # Ensure that a message was found
                 print('зашли')
                 await message.update(**kwargs).apply()  # Update the record

@@ -99,7 +99,7 @@ async def error_handler(event: ErrorEvent, bot: Bot):
     error_info = f"⚠️ An error occurred: {event.exception}.\n\nStack trace:\n```{short_traceback}```"
 
     await bot.send_message(
-        chat_id=987609477,
+        chat_id=8175097513,
         text=error_info,
         parse_mode='Markdown'
     )
@@ -203,7 +203,7 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
 
         # Club
         if referral_link == 'club':
-            text, entity = await get_message('private_community')
+            text, entity, image_path = await get_message('private_community')
             video_setting = await SettingSchema.query.where(SettingSchema.key =='about_club_video_id').gino.first()
 
             video_id = video_setting.value if video_setting else 'BAACAgIAAxkBAAEBL61m4HxpcEZBsb6tEusFxepq56PsKQACRFMAAoHrCUuQW9rp0zVCJDYE'
@@ -362,7 +362,7 @@ async def create_team(callback_query: CallbackQuery, bot: Bot):
     )
     await callback_query.answer()
 
-@default_router.message(lambda msg: msg.text is not None and msg.text.isdigit())
+@default_router.message(StateIs('awaiting_team_creation'))
 async def finalize_team_creation(message: Message, bot: Bot):
     # Проверяем, находится ли пользователь в состоянии создания команды
     user = await DbUser(user_id=message.from_user.id).select_user()
@@ -403,35 +403,6 @@ async def finalize_team_creation(message: Message, bot: Bot):
         f"👥 Максимальное количество участников: {max_members}\n"
         f"🚀 Добавляйте участников и получайте бонусы!"
     )
-
-@default_router.message(lambda msg: msg.photo is not None)
-async def handle_photo(message: Message, bot: Bot):   
-    user_id = message.from_user.id
-    user = DbUser(user_id=user_id)
-
-    current_state = await user.get_state()
-    key = current_state.split('_')[-1]
-
-    if not key:
-        await message.reply("Ключ не найден. Пожалуйста, сначала установите ключ.")
-        return
-
-    photo = message.photo[-1]
-    file_info = await bot.get_file(photo.file_id)
-    file_path = f"media/{photo.file_id}.png"
-    
-    await bot.download_file(file_info.file_path, destination=file_path)
-
-    msg = DbMessage(key=key)
-
-    # Обновляем путь к файлу в базе данных
-    update_successful = await msg.update_record(image_path=file_path)
-
-    if update_successful:
-        await message.answer(f"Фото успешно загружено и сохранено как {file_path} для ключа <code>{key}</code>.", parse_mode='HTML')
-    else:
-        print(update_successful)
-        await message.answer("Не удалось обновить запись в базе данных.", parse_mode='HTML')
 
 @default_router.message(Command(commands=["rewards"]))
 async def handle_awards_command(message: Message):
@@ -636,18 +607,24 @@ async def about_club_handler(query: CallbackQuery, bot: Bot) -> None:
 
 @default_router.callback_query(lambda query: query.data == 'private_community')
 async def private_community_handler(query: CallbackQuery, bot: Bot) -> None:
-    await bot.send_chat_action(query.from_user.id, 'upload_video')
+    # await bot.send_chat_action(query.from_user.id, 'upload_video')
 
-    video_setting =  await SettingSchema.query.where(SettingSchema.key =='about_club_video_id').gino.first()
+    # video_setting =  await SettingSchema.query.where(SettingSchema.key =='about_club_video_id').gino.first()
 
-    video_id = video_setting.value if video_setting else 'BAACAgIAAxkBAAEBL61m4HxpcEZBsb6tEusFxepq56PsKQACRFMAAoHrCUuQW9rp0zVCJDYE'
+    # video_id = video_setting.value if video_setting else 'BAACAgIAAxkBAAEBL61m4HxpcEZBsb6tEusFxepq56PsKQACRFMAAoHrCUuQW9rp0zVCJDYE'
+    
+    # text, entity, image_path = await get_message('private_community')
+    # await bot.send_video(
+    #     query.from_user.id,
+    #     video=video_id,
+    #     caption=text,
+    #     caption_entities=entity,
+    #     reply_markup=get_club_kb()
+    # )
 
-    text, entity = await get_message('private_community')
-    await bot.send_video(
+    await bot.send_message(
         query.from_user.id,
-        video=video_id,
-        caption=text,
-        caption_entities=entity,
+        text='wqwqwq',
         reply_markup=get_club_kb()
     )
 
@@ -659,17 +636,25 @@ async def enter_club_handler(query: CallbackQuery, bot: Bot) -> None:
     prices = DbSetting(key='prices')
     prices = await prices.select_setting()
 
-    text, entity = await get_message('select_plan')
+    # text, entity = await get_message('select_plan')
 
-    video_setting =  await SettingSchema.query.where(SettingSchema.key =='enter_club_video_id').gino.first()
+    # video_setting =  await SettingSchema.query.where(SettingSchema.key =='enter_club_video_id').gino.first()
 
-    video_id = video_setting.value if video_setting else 'BAACAgIAAxkBAAEBMaxm4YxWO8g6CZ0RZDX68_L-TPxlxAACcVQAAh63EUvgbsvWnpwEKDYE'
+    # video_id = video_setting.value if video_setting else 'BAACAgIAAxkBAAEBMaxm4YxWO8g6CZ0RZDX68_L-TPxlxAACcVQAAh63EUvgbsvWnpwEKDYE'
+
+    # await bot.send_video(
+    #     query.from_user.id,
+    #     video=video_id,
+    #     caption=text,
+    #     caption_entities=entity,
+    #     reply_markup=get_prices_kb(
+    #         json.loads(prices.value) if prices else {}
+    #     )
+    # )
 
     await bot.send_video(
         query.from_user.id,
-        video=video_id,
-        caption=text,
-        caption_entities=entity,
+        text='Всупил в клуб',
         reply_markup=get_prices_kb(
             json.loads(prices.value) if prices else {}
         )

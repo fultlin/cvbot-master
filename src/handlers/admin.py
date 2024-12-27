@@ -3,10 +3,10 @@ import json
 from aiogram.client.session import aiohttp
 from filters.role import RoleIs
 from filters.state import StateIs
-from aiogram import Router, Bot, F
-from aiogram.types import Message, CallbackQuery
+from aiogram import Router, Bot, F, types
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-import os
+import re
 
 from aiogram.filters import Command, CommandObject
 
@@ -253,7 +253,6 @@ async def editPhoto(callback: CallbackQuery, bot: Bot) -> None:
 
     if not user:
         return
-
     # Отображаем список доступных ключей
     keys_display = "\n".join([f"<code>{key}</code>" for key in keys])
 
@@ -276,12 +275,43 @@ async def setPhotoKey(message: Message, bot: Bot) -> None:
 
     if not db_message:
         await message.reply(f"Сообщение с ключом '{key}' не найдено.")
-        await user.set_state('')
+        await user.set_state('')  # Сбрасываем состояние
         return
 
-    await user.set_state(f'edit_photo_{key}')
-    await message.reply(f"Прикрепите новое изображение для ключа <code>{key}</code>.", parse_mode='HTML')
+    # Просим пользователя прикрепить фото
+    await message.reply(
+        f"Прикрепите новое изображение для ключа <code>{key}</code>.",
+        parse_mode='HTML'
+    )
+    await user.set_state(f'add_photo_{key}')  # Устанавливаем состояние с ключом
 
+
+@admin.message(StateIs('add_photo_*'))
+async def handle_photo(message: Message, bot: Bot):   
+    user_id = message.from_user.id
+    user = DbUser(user_id=user_id)
+
+    current_state = await user.get_state()
+    key = current_state.split('_')[-1]
+
+    if not key:
+        await message.reply("Ключ не найден. Пожалуйста, сначала установите ключ.")
+        return
+
+    photo = message.photo[-1]
+    file_info = await bot.get_file(photo.file_id)
+    image_path = f"media/{photo.file_id}.png"
+    
+    await bot.download_file(file_info.file_path, destination=image_path)
+
+    msg = DbMessage(key=key)
+    update_successful = msg.update_record(image_path=image_path)
+
+    if update_successful:
+        await message.answer(f"Фото успешно загружено и сохранено как {image_path} для ключа <code>{key}</code>.", parse_mode='HTML')
+    else:
+        print(update_successful)
+        await message.answer("Не удалось обновить запись в базе данных.", parse_mode='HTML')
 
 # @admin.message(StateIs(f'edit_photo_'), lambda message: message.photo is not None)
 # async def update_photo(message: Message, bot: Bot) -> None:
