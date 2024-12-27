@@ -1,0 +1,10 @@
+services:
+  volium_client:
+    container_name: volium_client
+    build:
+      context: .
+    restart: always
+    environment:
+      - NODE_ENV=production
+    ports:
+      - 3000:3000

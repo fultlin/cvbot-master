@@ -13,7 +13,7 @@ from keyboards.main import get_menu_kb, get_close_community_kb, get_club_kb, get
     get_confirm_kb, get_back_kb, main_menu, my_profile, get_utc_kb, change_language
 import traceback
 from aiogram import Router, Bot, F
-from aiogram.types import Message, CallbackQuery, FSInputFile, MessageEntity, BotCommand, ReplyKeyboardRemove
+from aiogram.types import Message, CallbackQuery, FSInputFile, MessageEntity, BotCommand
 
 from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton, KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
@@ -23,7 +23,7 @@ from aiogram.utils.deep_linking import decode_payload
 
 from middlewares.google_sheet import SheetMiddleware
 from middlewares.update_online import UpdateOnlineMiddleware
-from models.quick_commands import DbTeam, DbUser, DbMessage, DbSetting, DbPay
+from models.quick_commands import DbUser, DbMessage, DbSetting, DbPay
 from models.schemas.promos import PromosSchema
 from models.schemas.settings import SettingSchema
 
@@ -52,17 +52,9 @@ ref_hash = {
     '9': 'T'
 }
 
-reverse_ref_hash = {v: k for k, v in ref_hash.items()}
-
 def get_first_key_by_value(dictionary, value):
     return next((key for key, val in dictionary.items() if val == value), None)
 
-def extract_referral_id(referral_link):
-    referral_id = ""
-    for i in referral_link:
-        if i in reverse_ref_hash:
-            referral_id += reverse_ref_hash[i]
-    return referral_id
 
 time_zones = {
     1: "UTC-12:00 (Baker Island Time)",
@@ -99,7 +91,7 @@ async def error_handler(event: ErrorEvent, bot: Bot):
     error_info = f"⚠️ An error occurred: {event.exception}.\n\nStack trace:\n```{short_traceback}```"
 
     await bot.send_message(
-        chat_id=987609477,
+        chat_id=8175097513,
         text=error_info,
         parse_mode='Markdown'
     )
@@ -110,25 +102,27 @@ async def error_handler(event: ErrorEvent, bot: Bot):
 
 async def get_message(key: str) -> Tuple[str, List[MessageEntity]]:
     msg = DbMessage(key=key)
+    print(msg)
     msg = await msg.select_message()
+    print(msg)
     entities = []
     try:
         entities_json = json.loads(msg.entity) if msg.entity else []
-    except Exception:
+    except:
         entities_json = []
 
 
     for entity in entities_json:
         entities.append(MessageEntity(**entity))
 
-    return (msg.text if msg.text else 'Сообщение не найдено'), entities, msg.image_path if msg.image_path else None
+    return (msg.text if msg.text else 'Сообщение не найдено'), entities
 
 
 async def contact_handler(message: Message, bot: Bot, uid: int) -> None:
     user = DbUser(user_id=uid)
     await user.set_state('question')
 
-    text, entity, image_path = await get_message('contact')
+    text, entity = await get_message('contact')
 
     root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     file_path = os.path.join(root_dir, 'media', 'contact.png')
@@ -141,8 +135,7 @@ async def contact_handler(message: Message, bot: Bot, uid: int) -> None:
     # Attempt to send the photo
     await bot.send_photo(
         uid,
-        # photo=FSInputFile(file_path),
-        photo=FSInputFile(image_path),
+        photo=FSInputFile(file_path),
         caption=text,
         caption_entities=entity,
         reply_markup=get_back_kb()
@@ -155,105 +148,49 @@ async def start_handler(message: Message, command: CommandObject, bot: Bot) -> N
 
     if not await user.select_user():
         await user.add()
+    print(1)
+    type_of_pay = command.args
 
-        referral_link = command.args
+    if type_of_pay == 'club':
+        text, entity = await get_message('private_community')
+        video_setting = await SettingSchema.query.where(SettingSchema.key =='about_club_video_id').gino.first()
 
-        # Приглашение по ссылке в команду
-        if referral_link and referral_link.startswith('team_') and not referral_link.startswith('club'):
-            team_link = referral_link[5:]
-            team_id = extract_referral_id(team_link)
-            if user.user_id != team_id:
-              team = await DbTeam(team_id=int(team_id)).select_team()
-              if team:
-                  members_id = json.loads(team.members_id)
-                  if len(members_id) >= team.members_count:
-                      await message.answer("Команда уже заполнена.")
-                  else:
-                      if message.from_user.id in members_id:
-                          await message.answer("Вы уже находитесь в этой команде.")
-                      else:
-                          members_id.append(message.from_user.id)
-                          
-                          # Обновляем список участников
-                          update_result = await DbTeam(team_id=int(team_id)).update_record(members_id=json.dumps(members_id))
-                          current_members_count = team.current_members
-                          new_members_count = current_members_count + 1
-                          update_result = await DbTeam(team_id=int(team_id)).update_record(current_members=int(new_members_count))
-                          if update_result:
-                              await DbUser(user_id=message.from_user.id).update_record(team_id=int(team_id))
-                              await bot.send_message(message.from_user.id, f"Вы вступили по реферальной ссылке в команду ID: {team_id}")
-                          else:
-                              await message.answer("Не удалось обновить команду.")
-                  
-              else:
-                  await bot.send_message(message.from_user.id, "Команда не найдена")
-              
+        video_id = video_setting.value if video_setting else 'BAACAgIAAxkBAAEBL61m4HxpcEZBsb6tEusFxepq56PsKQACRFMAAoHrCUuQW9rp0zVCJDYE'
 
-        # Приглашение по ссылке
-        if (referral_link) and not referral_link.startswith('team_') and not referral_link.startswith('club'):
-          inviter_id = extract_referral_id(referral_link)
-          if user.user_id != inviter_id:
-            await bot.send_message(message.from_user.id, f"Вы пришли по реферальной ссылке от пользователя ID: {inviter_id}")
-
-            inviter_user = await DbUser(user_id=int(inviter_id)).select_user()
-            if inviter_user:
-                current_referals_count = inviter_user.referals_count
-                new_referals_count = current_referals_count + 1
-                await DbUser(user_id=int(inviter_id)).update_record(referals_count=new_referals_count)
-
-        # Club
-        if referral_link == 'club':
-            text, entity = await get_message('private_community')
-            video_setting = await SettingSchema.query.where(SettingSchema.key =='about_club_video_id').gino.first()
-
-            video_id = video_setting.value if video_setting else 'BAACAgIAAxkBAAEBL61m4HxpcEZBsb6tEusFxepq56PsKQACRFMAAoHrCUuQW9rp0zVCJDYE'
-
-            await bot.send_video(
-                message.from_user.id,
-                video=video_id,
-                caption=text,
-                caption_entities=entity,
-                reply_markup=get_club_kb()
-            )
-        text, entity, image_path = await get_message('start')
-
-        print('sasasa')
-        print(text)
-
-        # Стартовое сообщение
-        await bot.send_message(message.from_user.id, 'Добро пожаловать', reply_markup=main_menu())
-
-        await bot.send_photo(
+        await bot.send_video(
             message.from_user.id,
-            photo=FSInputFile(image_path),
+            video=video_id,
             caption=text,
             caption_entities=entity,
-            reply_markup=get_menu_kb(),
-    )
-    else:
-      # Если пользователь уже был в бд, но по каким-то причинам удалял чат или блокировал бота
-      await bot.send_message(message.from_user.id, 'С возвращением!', reply_markup=main_menu())
-
-    
+            reply_markup=get_club_kb()
+        )
 
 @default_router.message(CommandStart())
 async def default_handler(message: Message, bot: Bot) -> None:
     user = DbUser(user_id=message.from_user.id)
     usr = await user.select_user()
-    ans = 0
-
-    # Если пользователь не существует, добавляем его
+    ans = ''
+    payload = message.text.split('=')
+    # Получаем аргументы из команды /start
+    if len(payload) > 1:
+        # Декодирование реферального кода
+        referred_user_id = payload[1]
+        for i in str(referred_user_id):
+            ans += str(get_first_key_by_value(ref_hash, i))
+    else:
+        ans = 0
+            
+    
     if not usr:
-        user = DbUser(
-            user_id=message.from_user.id,
-            role='user',
-            username=message.from_user.username,
-            name=message.from_user.full_name,
-            parent=int(ans)
-        )
+        user = DbUser(user_id=message.from_user.id, role='user', username=message.from_user.username, name=message.from_user.full_name, parent=int(ans))
         await user.add()
         usr = await user.select_user()
         
+        if len(payload) > 1: 
+            par = await DbUser(user_id=int(ans)).select_user()
+            await DbUser(user_id=int(ans)).update_record(referrals_count=par.referrals_count + 1)
+            await message.answer(f"Вы пришли по реферальной ссылке от пользователя ID: {ans}")
+
     commands = [
         BotCommand(
             command='/start',
@@ -269,15 +206,40 @@ async def default_handler(message: Message, bot: Bot) -> None:
         ),
     ]
 
+    # if usr.role == 'admin':
+    #     commands.append(BotCommand(
+    #         command='/edit',
+    #         description='Напишите ответом на сообщение, которое хотите изменить'
+    #     ))
+    #     commands.append(BotCommand(
+    #         command='/set_price',
+    #         description='Установить цены на подписку'
+    #     ))
+    #     commands.append(BotCommand(
+    #         command='/mailing',
+    #         description='Рассылка сообщений'
+    #     ))
+    #     commands.append(BotCommand(
+    #         command='/list_promos',
+    #         description='Список кодов'
+    #     ))
+    #     commands.append(BotCommand(
+    #         command='/add_promo',
+    #         description='Добавить промокод'
+    #     ))
+    #     commands.append(BotCommand(
+    #         command='/del_promo',
+    #         description='Удалить промокод'
+    #     ))
+
     await bot.set_my_commands(commands)
 
-    text, entity, image_path= await get_message('start')
-    print(text)
+    text, entity = await get_message('start')
     await bot.send_message(message.from_user.id, 'Добро пожаловать', reply_markup=main_menu())
 
     await bot.send_photo(
         message.from_user.id,
-        photo=FSInputFile(image_path),
+        photo=FSInputFile('media/start.png'),
         caption=text,
         caption_entities=entity,
         reply_markup=get_menu_kb(),
@@ -321,22 +283,12 @@ async def profile_link(message: Message, bot: Bot):
             keyboard = get_menu_kb()
     await bot.send_message(message.from_user.id, f'<b>🗃 Ваша подписка:</b>\n\n{ans}', reply_markup=keyboard, parse_mode='HTML')
 
-async def send_profile_link(user_id: int, bot: Bot):
-    invite_button = InlineKeyboardButton(text="Пригласить друга", callback_data="invite_friend")
-    create_team_button = InlineKeyboardButton(text="Создать команду", callback_data="create_team")
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[invite_button, create_team_button]])    
-    await bot.send_message(user_id, "Выберите действие:", reply_markup=keyboard)
-
 @default_router.message(F.text == '🔥Реферальная программа')
 async def profile_link(message: Message, bot: Bot):
-    await send_profile_link(message.from_user.id, bot)
-
-@default_router.callback_query(F.data == 'invite_friend')
-async def invite_friend(callback_query: CallbackQuery, bot: Bot):
-    await DbUser(user_id=callback_query.from_user.id).set_state('')
-    user = await DbUser(user_id=callback_query.from_user.id).select_user()
-    referral_link = f"https://t.me/svmaster_bot?start="
+   # user = DbUser(user_id=message.from_user.id).select_user()
+    await DbUser(user_id=message.from_user.id).set_state('')
+    user = await DbUser(user_id=message.from_user.id).select_user()
+    referral_link = f"https://t.me/CV_club_bot/start="
     for i in str(user.user_id):
         referral_link += ref_hash[str(i)]
 
@@ -344,153 +296,21 @@ async def invite_friend(callback_query: CallbackQuery, bot: Bot):
             f"🌟 Ваш персональный реферальный код: {referral_link} 🌟\n\n"
             f"Что такое рефералы?\n"
             f"Рефералы – это люди, которые присоединились к нашему клубу благодаря вашей рекомендации. Каждый приведенный друг может приносить вам вознаграждение!\n\n"
+            f"Ваши достижения:\n"
+            f"- Приведено рефералов: {user.referrals_count}\n"
+            f"- Активных рефералов в клубе: {user.active_referrals}\n\n"
             f"📈 Ваши награды:\n"
             f"Вы можете просмотреть свои награды за рефералов по команде: /rewards\n\n"
             f"💰 Вознаграждение за приглашенное лицо:\n"
             f"За каждого реферала вы получаете 30% от суммы, которую он потратит. Вы можете выбрать, оставить все деньги себе или отдать часть как скидку вашему рефералу."
         )
-    await callback_query.message.answer(reply_message)
-    await callback_query.answer()
-
-@default_router.callback_query(F.data == 'create_team')
-async def create_team(callback_query: CallbackQuery, bot: Bot):
-    
-    await DbUser(user_id=callback_query.from_user.id).set_state('awaiting_team_creation')
-
-    await callback_query.message.answer(
-        "Введите максимальное количество участников в вашей команде (например, 4, 8, 12)."
-    )
-    await callback_query.answer()
-
-@default_router.message(lambda msg: msg.text is not None and msg.text.isdigit())
-async def finalize_team_creation(message: Message, bot: Bot):
-    # Проверяем, находится ли пользователь в состоянии создания команды
-    user = await DbUser(user_id=message.from_user.id).select_user()
-    if user.state != 'awaiting_team_creation':
-        await message.answer("Неверный этап процесса. Пожалуйста, начните с команды 'Создать команду'.")
-        return
-
-    max_members = int(message.text)
-    if max_members < 1:
-        await message.answer("Количество участников должно быть больше нуля.")
-        return
-
-    invite_link = f"https://t.me/svmaster_bot?start=team_"
-    for i in str(user.user_id):
-        invite_link += ref_hash[str(i)]
-
-    # Создаем модель команды
-    new_team = {
-        "id": user.user_id,  # Уникальный ID команды (равен ID владельца)
-        "invite_link": invite_link,
-        "owner_id": user.user_id,
-        "members_id": json.dumps([user.user_id]),  # Храним список участников как JSON-строку
-        "members_count": max_members,
-        "current_members": 1,
-    }
-
-    await DbTeam(team_id=user.user_id).add_team(**new_team)
-
-    await DbUser(user_id=message.from_user.id).update_record(team_id=user.user_id)
-
-    # Обновляем данные пользователя
-    await DbUser(user_id=message.from_user.id).update_record(state='main_menu')
-
-    # Подтверждение пользователю
-    await message.answer(
-        f"🎉 Команда успешно создана!\n\n"
-        f"🌟 Ссылка для приглашения: {invite_link}\n"
-        f"👥 Максимальное количество участников: {max_members}\n"
-        f"🚀 Добавляйте участников и получайте бонусы!"
-    )
-
-@default_router.message(lambda msg: msg.photo is not None)
-async def handle_photo(message: Message, bot: Bot):   
-    user_id = message.from_user.id
-    user = DbUser(user_id=user_id)
-
-    current_state = await user.get_state()
-    key = current_state.split('_')[-1]
-
-    if not key:
-        await message.reply("Ключ не найден. Пожалуйста, сначала установите ключ.")
-        return
-
-    photo = message.photo[-1]
-    file_info = await bot.get_file(photo.file_id)
-    file_path = f"media/{photo.file_id}.png"
-    
-    await bot.download_file(file_info.file_path, destination=file_path)
-
-    msg = DbMessage(key=key)
-
-    # Обновляем путь к файлу в базе данных
-    update_successful = await msg.update_record(image_path=file_path)
-
-    if update_successful:
-        await message.answer(f"Фото успешно загружено и сохранено как {file_path} для ключа <code>{key}</code>.", parse_mode='HTML')
-    else:
-        print(update_successful)
-        await message.answer("Не удалось обновить запись в базе данных.", parse_mode='HTML')
-
-@default_router.message(Command(commands=["rewards"]))
-async def handle_awards_command(message: Message):
-    user = await DbUser(user_id=message.from_user.id).select_user()
-    
-    reply_message = (
-      f"Ваши достижения:\n"
-      f"- Приведено рефералов: {user.referals_count}\n"
-      f"- Активных рефералов в клубе: {user.active_referals}\n\n"
-    )
-
     await message.answer(reply_message)
-
-@default_router.message(Command(commands=["group_status"]))
-async def handle_group_status(message: Message):
-    await message.answer('Здесь будет информация о текущих групповых акциях и скидках')
-
-    
-@default_router.message(Command(commands=["group_info"]))
-async def handle_group_info(message: Message):
-    user = await DbUser(user_id=message.from_user.id).select_user()
-    team = await DbTeam(team_id=user.team_id).select_team()
-    reply_message = (
-        f"👥 Группа: {team.id}\n"
-        f"Количество человек: {team.current_members}\n"
-        f"Осталось мест: {team.members_count - team.current_members}\n"
-    )
-    await message.answer(reply_message)
-
-# @default_router.message(F.text == '🔥Реферальная программа')
-# async def profile_link(message: Message, bot: Bot):
-#    # user = DbUser(user_id=message.from_user.id).select_user()
-#     await DbUser(user_id=message.from_user.id).set_state('')
-#     user = await DbUser(user_id=message.from_user.id).select_user()
-#     print('после этого')
-#     print(user)
-#     referral_link = f"https://t.me/CV_club_bot/start="
-#     for i in str(user.user_id):
-#         referral_link += ref_hash[str(i)]
-
-#     reply_message = (
-#             f"🌟 Ваш персональный реферальный код: {referral_link} 🌟\n\n"
-#             f"Что такое рефералы?\n"
-#             f"Рефералы – это люди, которые присоединились к нашему клубу благодаря вашей рекомендации. Каждый приведенный друг может приносить вам вознаграждение!\n\n"
-#             f"Ваши достижения:\n"
-#             f"- Приведено рефералов: {user.referals_count}\n"
-#             f"- Активных рефералов в клубе: {user.active_referals}\n\n"
-#             f"📈 Ваши награды:\n"
-#             f"Вы можете просмотреть свои награды за рефералов по команде: /rewards\n\n"
-#             f"💰 Вознаграждение за приглашенное лицо:\n"
-#             f"За каждого реферала вы получаете 30% от суммы, которую он потратит. Вы можете выбрать, оставить все деньги себе или отдать часть как скидку вашему рефералу."
-#         )
-#     await message.answer(reply_message)
     
     
 @default_router.callback_query(lambda query: query.data == 'jojoreference')
 async def reference(query: CallbackQuery, bot: Bot) -> None:
     await DbUser(user_id=query.from_user.id).set_state('')
-    await send_profile_link(query.from_user.id, bot)
+    await bot.send_message(query.from_user.id, "🔥Скоро будет жарко")
     await bot.answer_callback_query(query.id, '')
 
 @default_router.callback_query(lambda query: query.data == 'email')
@@ -596,7 +416,7 @@ async def contact_handler_query(query: CallbackQuery, bot: Bot) -> None:
 
 @default_router.callback_query(lambda query: query.data == 'education')
 async def education_handler(query: CallbackQuery, bot: Bot) -> None:
-    text, entity, image_path = await get_message('education')
+    text, entity = await get_message('education')
     # await bot.send_message(
     #     query.from_user.id,
     #     text=text,
@@ -606,7 +426,7 @@ async def education_handler(query: CallbackQuery, bot: Bot) -> None:
 
     await bot.send_photo(
         query.from_user.id,
-        photo=FSInputFile(image_path),
+        photo=FSInputFile('media/education.png'),
         caption=text,
         caption_entities=entity,
         reply_markup=get_close_community_kb(),
@@ -764,11 +584,10 @@ async def pay_handler1(query: CallbackQuery, bot: Bot) -> None:
     if not pay_current:
         await pay.add()
 
-    text, entity, image_path = await get_message('pay')
+    text, entity = await get_message('pay')
     await bot.send_photo(
         query.from_user.id,
-        # photo=FSInputFile('media/wallet.png'),
-        photo=FSInputFile(image_path),
+        photo=FSInputFile('media/wallet.png'),
         caption=text,
         caption_entities=entity,
     )
@@ -858,11 +677,11 @@ async def back_handler(query: CallbackQuery, bot: Bot) -> None:
     #     )
     # )
 
-    text, entity, image_path = await get_message('start')
+    text, entity = await get_message('start')
     await user.set_state('')
     await bot.send_photo(
         query.from_user.id,
-        photo=FSInputFile(image_path),
+        photo=FSInputFile('media/start.png'),
         caption=text,
         caption_entities=entity,
         reply_markup=get_menu_kb(),

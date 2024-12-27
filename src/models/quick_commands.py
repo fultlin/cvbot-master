@@ -5,7 +5,6 @@ from typing import Optional, Union, List
 from asyncpg import UniqueViolationError
 from sqlalchemy import and_, case
 from gino import Gino
-from models.schemas.team import TeamSchema
 from models.schemas.user import UserSchema
 from models.schemas.message import MessageSchema
 from models.schemas.settings import SettingSchema
@@ -349,14 +348,12 @@ class ThirdRecent:
 
 
 class DbUser:
-    def __init__(self, user_id: Optional[int] = None, role: Optional[str] = None, username: Optional[str] = None, name: Optional[str] = None, parent: Optional[int] = 0, referals_count: Optional[int] = 0):
+    def __init__(self, user_id: Optional[int] = None, role: Optional[str] = None, username: Optional[str] = None, name: Optional[str] = None, parent: Optional[int] = 0):
         self.user_id = user_id
         self.role = role
         self.username = username
         self.name = name
         self.parent = parent
-        self.referals_count = referals_count
-        
     async def add(self):
         try:
             user = UserSchema(user_id=self.user_id, role=self.role, username=self.username, name=self.name, parent=self.parent)
@@ -428,13 +425,6 @@ class DbUser:
         except Exception:
             return False
 
-    async def get_referals_count(self):
-        try:
-            user = await self.select_user()
-            return user.referals_count
-        except Exception:
-            return False
-
     async def remove(self):
         try:
             user = await self.select_user()
@@ -469,16 +459,15 @@ class DbUser:
 
 class DbMessage:
     def __init__(self, key: Optional[str] = None, text: Optional[str] = None, lang: Optional[str] = None,
-                 entity: Optional[str] = None, image_path: Optional[str] = None):
+                 entity: Optional[str] = None):
         self.key = key
         self.text = text
         self.lang = lang
         self.entity = entity
-        self.image_path = image_path
 
     async def add(self):
         try:
-            message = MessageSchema(key=self.key, text=self.text, lang=self.lang, entity=self.entity, image_path=self.image_path)
+            message = MessageSchema(key=self.key, text=self.text, lang=self.lang, entity=self.entity)
             return await message.create()
         except UniqueViolationError:
             return False
@@ -505,18 +494,8 @@ class DbMessage:
 
         try:
             message = await self.select_message()
-            print(f"Updating record with values: {kwargs}")  # Логируем значения перед обновлением
-
-            for key, value in kwargs.items():
-                print(f"Key: {key}, Value: {value}, Type: {type(value)}")
-
-            if message:  # Ensure that a message was found
-                print('зашли')
-                await message.update(**kwargs).apply()  # Update the record
-                return True  # Indicate success
-            return False  # No message found to update
-        except Exception as e:
-            print(f"Error updating record: {e}")  # Log error for debugging
+            return await message.update(**kwargs).apply()
+        except Exception:
             return False
 
     async def get_text(self):
@@ -683,48 +662,4 @@ class DbPay:
         try:
             return await PaySchema.query.where(PaySchema.end_date > date).order_by(PaySchema.plan).gino.all()
         except Exception:
-            return False
-
-class DbTeam:
-    def __init__(self, team_id: Optional[int] = None, owner_id: Optional[int] = None):
-        self.team_id = team_id
-        self.owner_id = owner_id
-
-    async def add_team(self, **kwargs):
-        try:
-            team = TeamSchema(**kwargs)
-            return await team.create()
-        except Exception:
-            return False
-
-    async def select_team(self):
-        try:
-            if self.team_id and not self.owner_id:
-                # Выбор команды по team_id
-                return await TeamSchema.query.where(TeamSchema.id == self.team_id).gino.first()
-            elif not self.team_id and self.owner_id:
-                # Выбор всех команд по owner_id
-                return await TeamSchema.query.where(TeamSchema.owner_id == self.owner_id).gino.all()
-            elif self.team_id and self.owner_id:
-                # Выбор команды по team_id и owner_id
-                return await TeamSchema.query.where(
-                    and_(TeamSchema.id == self.team_id, TeamSchema.owner_id == self.owner_id)
-                ).gino.first()
-            else:
-                # Если не указаны ни team_id, ни owner_id, возвращаем None или пустой список
-                return None
-        except Exception as e:
-            print(f"Ошибка при выборке команды: {e}")
-            return False
-
-
-    async def update_record(self, **kwargs):
-        if not kwargs:
-            return False
-
-        try:
-            team = await self.select_team()
-            return await team.update(**kwargs).apply()
-        except Exception:
-            print(Exception)
             return False

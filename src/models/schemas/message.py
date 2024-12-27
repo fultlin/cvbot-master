@@ -10,6 +10,5 @@ class MessageSchema(TimedBaseModel):
     text = Column(String)
     entity = Column(String, nullable=True)
     lang = Column(String, nullable=True)
-    image_path = Column(String, nullable=True)
 
     query: sql.Select

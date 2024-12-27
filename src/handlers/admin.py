@@ -6,8 +6,6 @@ from filters.state import StateIs
 from aiogram import Router, Bot, F
 from aiogram.types import Message, CallbackQuery
 
-import os
-
 from aiogram.filters import Command, CommandObject
 
 from middlewares.google_sheet import SheetMiddleware
@@ -241,86 +239,17 @@ async def editText(callback: CallbackQuery, bot: Bot) -> None:
 
     await bot.send_message(
         chat_id=user_id,
-        text=f'Укажите ключ сообщения для редактирования: <code>ключ</code> \n\nДоступные ключи:\n{keys_display}',
+        text=f'Укажите ключ сообщения для редактирования: /edit <code>ключ</code> \n\nДоступные ключи:\n{keys_display}',
         parse_mode='HTML'
     )
     await user.set_state('gdum')
-
-@admin.callback_query(F.data == 'edit_photo')
-async def editPhoto(callback: CallbackQuery, bot: Bot) -> None:
-    user_id = callback.from_user.id
-    user = DbUser(user_id=user_id)
-
-    if not user:
-        return
-
-    # Отображаем список доступных ключей
-    keys_display = "\n".join([f"<code>{key}</code>" for key in keys])
-
-    await bot.send_message(
-        chat_id=user_id,
-        text=f'Укажите ключ сообщения для редактирования изображения: <code>ключ</code> \n\nДоступные ключи:\n{keys_display}',
-        parse_mode='HTML'
-    )
-    await user.set_state('edit_photo_key')
-
-
-@admin.message(StateIs('edit_photo_key'))
-async def setPhotoKey(message: Message, bot: Bot) -> None:
-    user_id = message.from_user.id
-    user = DbUser(user_id=user_id)
-    key = message.text.strip()
     
-    msg = DbMessage(key=key)
-    db_message = await msg.select_message()
-
-    if not db_message:
-        await message.reply(f"Сообщение с ключом '{key}' не найдено.")
-        await user.set_state('')
-        return
-
-    await user.set_state(f'edit_photo_{key}')
-    await message.reply(f"Прикрепите новое изображение для ключа <code>{key}</code>.", parse_mode='HTML')
-
-
-# @admin.message(StateIs(f'edit_photo_'), lambda message: message.photo is not None)
-# async def update_photo(message: Message, bot: Bot) -> None:
-#     user_id = message.from_user.id
-#     user = DbUser(user_id=user_id)
-
-#     state = await user.get_state()
-#     key = state.replace('edit_photo_', '')
-
-#     msg = DbMessage(key=key)
-#     db_message = await msg.select_message()
-
-#     if not db_message:
-#         await message.reply(f"Сообщение с ключом '{key}' не найдено.", parse_mode='HTML')
-#         await user.set_state('')
-#         return
-
-#     photo = message.photo[-1]
-#     file_path = f"media/{key}.png"
-#     await photo.download(destination=file_path)
-
-#     # Удаляем старое изображение (если существует)
-#     if db_message.image_path:
-#         try:
-#             os.remove(db_message.image_path)
-#         except FileNotFoundError:
-#             pass
-
-#     # Обновляем путь к изображению в базе данных
-#     await msg.update_record(image_path=file_path)
-#     await message.answer(f"Фото успешно обновлено и сохранено как {file_path}", parse_mode='HTML')
-
+    
 @admin.message(StateIs('gdum'))
 async def checkkl(message: Message, bot: Bot) -> None:
     user_id = message.from_user.id
     user = DbUser(user_id=user_id)
-    # key = message.text
-    key = message.text.replace('/edit ', '').strip()
-
+    key = message.text
 
     msg, entity = await get_message(key)
 

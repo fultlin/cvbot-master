@@ -16,7 +16,6 @@ def ease_link_kb():
         [InlineKeyboardButton(text='🔊🟩 Рассылка', callback_data='mailing', resize_keyboard=True)],
         [InlineKeyboardButton(text='👀🟩 Ричауты', callback_data='reach_out', resize_keyboard=True)],
         [InlineKeyboardButton(text='👀🟩 Изменить наполнение', callback_data='edit_text', resize_keyboard=True)],
-        [InlineKeyboardButton(text='👀🟩 Изменить фото сообщения', callback_data='edit_photo', resize_keyboard=True)],
         [InlineKeyboardButton(text='📊🟪 Посмотреть промокоды', callback_data='list_promos', resize_keyboard=True)],
         [InlineKeyboardButton(text='📊🟪 Добавить промокод', callback_data='add_promo', resize_keyboard=True)],
         [InlineKeyboardButton(text='🧩🟨 Информация о подписчике', callback_data='manageuser', resize_keyboard=True)],
