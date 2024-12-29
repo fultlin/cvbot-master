@@ -729,3 +729,54 @@ class DbTeam:
         except Exception:
             print(Exception)
             return False
+
+class DbMailing:
+    def __init__(self, mailing_id: Optional[int] = None, user_id: Optional[int] = None):
+        self.mailing_id = mailing_id
+        self.user_id = user_id
+
+    async def add_mailing(self, **kwargs):
+        try:
+            mailing = MailingSchema(**kwargs)
+            return await mailing.create()
+        except Exception as e:
+            print(f"Ошибка при добавлении рассылки: {e}")
+            return False
+
+    async def select_mailing(self):
+        try:
+            if self.mailing_id and not self.user_id:
+                # Выбор рассылки по mailing_id
+                return await MailingSchema.query.where(MailingSchema.id == self.mailing_id).gino.first()
+            elif not self.mailing_id and self.user_id:
+                # Выбор всех рассылок по user_id
+                return await MailingSchema.query.where(MailingSchema.user_id == self.user_id).gino.all()
+            elif self.mailing_id and self.user_id:
+                # Выбор рассылки по mailing_id и user_id
+                return await MailingSchema.query.where(
+                    and_(MailingSchema.id == self.mailing_id, MailingSchema.user_id == self.user_id)
+                ).gino.first()
+            else:
+                # Если не указаны ни mailing_id, ни user_id, возвращаем None или пустой список
+                return None
+        except Exception as e:
+            print(f"Ошибка при выборке рассылки: {e}")
+            return False
+
+    async def update_record(self, **kwargs):
+      if not kwargs:
+          return False
+
+      try:
+          mailings = await self.select_mailing()  # Получаем все записи
+          if mailings:
+              for mailing in mailings:  # Обрабатываем каждую запись
+                  await mailing.update(**kwargs).apply()
+              return True
+          else:
+              print("Рассылка не найдена для обновления.")
+              return False
+      except Exception as e:
+          print(f"Ошибка при обновлении рассылки: {e}")
+          return False
+

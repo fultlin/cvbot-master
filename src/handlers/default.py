@@ -99,7 +99,8 @@ async def error_handler(event: ErrorEvent, bot: Bot):
     error_info = f"⚠️ An error occurred: {event.exception}.\n\nStack trace:\n```{short_traceback}```"
 
     await bot.send_message(
-        chat_id=8175097513,
+        # chat_id=8175097513,
+        chat_id=582274647,
         text=error_info,
         parse_mode='Markdown'
     )

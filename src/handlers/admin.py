@@ -11,9 +11,10 @@ import re
 from aiogram.filters import Command, CommandObject, StateFilter
 
 from middlewares.google_sheet import SheetMiddleware
-from models.quick_commands import DbUser, DbMessage, DbSetting, DbPay, DbRecent, FirstRecent, SecondRecent, ThirdRecent
+from models.quick_commands import DbUser, DbMessage, DbSetting, DbPay, DbRecent, FirstRecent, SecondRecent, ThirdRecent, DbMailing
 from models.schemas.mailing import MailingSchema
 from datetime import datetime
+import pytz
 from dateutil.relativedelta import relativedelta
 
 from models.schemas.promos import PromosSchema
@@ -404,15 +405,6 @@ async def setPrice(callback: CallbackQuery, bot: Bot) -> None:
         'Введите новую цену в формате: \nмес цена скидка\nЕсли скидки нету, то 0\nНовый тариф с новой строки\nПример: 1 125 0')
 
 
-@admin.callback_query(F.data =='mailing')
-async def mailing(callback: CallbackQuery, bot: Bot) -> None:
-    await bot.answer_callback_query(callback.id, '')
-    user = DbUser(user_id=callback.from_user.id)
-    await user.set_state('mailing')
-
-    await bot.send_message(callback.from_user.id, 'Пришлите сообщение для рассылки' , reply_markup=get_back_kb())
-
-
 @admin.callback_query(F.data =='list_promos')
 async def listPromos(callback: CallbackQuery, bot: Bot) -> None:
     await bot.answer_callback_query(callback.id, '')
@@ -482,73 +474,105 @@ async def deletePromoHandler(message: Message, bot: Bot) -> None:
     except Exception:
         await message.answer('Неверный формат')
 
+@admin.callback_query(F.data == 'mailing')
+async def mailing(callback: CallbackQuery, bot: Bot) -> None:
+    await bot.answer_callback_query(callback.id, '')
+    user = DbUser(user_id=callback.from_user.id)
+    await user.set_state('mailing_text')
 
-@admin.message(StateIs('mailing'))
-async def mailingHandler(message: Message, bot: Bot) -> None:
+    await bot.send_message(callback.from_user.id, 'Пришлите текст сообщения для рассылки', reply_markup=get_back_kb())
+
+@admin.message(StateIs('mailing_text'))
+async def mailingTextHandler(message: Message, bot: Bot) -> None:
     user = DbUser(user_id=message.from_user.id)
-
-    await user.set_state('users_mailing')
+    await user.set_state('mailing_time')
 
     mes = await message.answer(
-        'Пришлите ответом на сообщение для рассылки айди пользователей через пробел или 0 для всех', reply_markup=get_back_kb())
+        'Пришлите ответом на сообщение время для рассылки в формате YYYY-MM-DD HH:MM', reply_markup=get_back_kb()
+    )
 
-    mailing = MailingSchema(user_id=message.from_user.id, text=message.text, message_id=mes.message_id)
-    await mailing.create()
+    mailing = DbMailing(user_id=message.from_user.id)
+    await mailing.add_mailing(text=message.text, message_id=mes.message_id, user_id=message.from_user.id)
 
+@admin.message(StateIs('mailing_time'))
+async def mailingTimeHandler(message: Message, bot: Bot) -> None:
+    user = DbUser(user_id=message.from_user.id)
 
-@admin.message(StateIs('users_mailing'), lambda message: message.reply_to_message is not None)
-async def mailingUsers(message: Message, bot: Bot) -> None:
-    u = DbUser(user_id=message.from_user.id)
+    try:
+        scheduled_time = datetime.strptime(message.text, '%Y-%m-%d %H:%M')
 
-    users = message.text.split(' ') if ' ' in message.text else [message.text]
-    message_id = message.reply_to_message.message_id
+        await user.set_state('users_mailing')
 
-    if message.text != '0':
-        for user_id in users:
-            try:
-                sent_msg = await bot.copy_message(
-                    chat_id=user_id,
-                    from_chat_id=message.from_user.id,
-                    message_id=message_id,
-                )
-            except Exception:
-                pass
-    else:
-        users = DbUser(role='user')
-        users = await users.select_user()
+        mailing = DbMailing(user_id=message.from_user.id)
+        await mailing.update_record(scheduled_time=scheduled_time)
 
-        for user in users:
-            try:
-                sent_msg = await bot.copy_message(
-                    chat_id=user.user_id,
-                    from_chat_id=message.from_user.id,
-                    message_id=message_id,
-                )
+        await message.answer('Время для рассылки установлено на: {}'.format(scheduled_time.strftime('%Y-%m-%d %H:%M')), reply_markup=get_back_kb())
+    
+    except ValueError:
+        await message.answer('Неверный формат даты и времени. Пожалуйста, используйте формат: YYYY-MM-DD HH:MM', reply_markup=get_back_kb())
 
-                cur_user = DbUser(user_id=user.user_id)
-            #    await cur_user.update_record(notification=1)
-            except Exception:
-                pass
+# @admin.message(StateIs('users_mailing'), lambda message: message.reply_to_message is not None)
+# async def mailingUsers(message: Message, bot: Bot) -> None:
+#     u = DbUser(user_id=message.from_user.id)
 
-    await u.set_state('')
+#     users = message.text.split(' ') if ' ' in message.text else [message.text]
+#     message_id = message.reply_to_message.message_id
 
-    schema = DbUser()
-    schema = await schema.get_schema()
-    moders = await schema.query.where(schema.role.in_(['admin', 'moder'])).gino.all()
+#     if message.text != '0':
+#         for user_id in users:
+#             try:
+#                 sent_msg = await bot.copy_message(
+#                     chat_id=user_id,
+#                     from_chat_id=message.from_user.id,
+#                     message_id=message_id,
+#                 )
+#             except Exception:
+#                 pass
+#     else:
+#         users = DbUser(role='user')
+#         users = await users.select_user()
 
-    mailing = await MailingSchema.query.where(MailingSchema.message_id == message_id).gino.first()
+#         for user in users:
+#             try:
+#                 # Определяем часовой пояс пользователя
+#                 user_timezone = user.timezone if user.timezone != 0 else 'Europe/Moscow'
+#                 user_tz = pytz.timezone(user_timezone)
 
-    if mailing and moders:
-        recepients = 'Всем пользователям' if message.text == '0' else f'Пользователям: {users}'
+#                 # Преобразуем время МСК в местное время пользователя
+#                 msk_tz = pytz.timezone('Europe/Moscow')
+#                 current_time_msk = datetime.now(msk_tz)
+#                 local_time = current_time_msk.astimezone(user_tz).strftime('%Y-%m-%d %H:%M:%S')
 
-        for moder in moders:
-            if (moder.user_id != message.from_user.id):
-                await bot.send_message(
-                    chat_id=moder.user_id,
-                    text=f'Администратор {message.from_user.full_name} отправил рассылку с текстом: \n{mailing.text} \n\n{recepients}'
-                )
+#                 sent_msg = await bot.copy_message(
+#                     chat_id=user.user_id,
+#                     from_chat_id=message.from_user.id,
+#                     message_id=message_id,
+#                 )
 
-    await message.answer('Рассылка завершена')
+#                 cur_user = DbUser(user_id=user.user_id)
+#             #    await cur_user.update_record(notification=1)
+#             except Exception:
+#                 pass
+
+#     await u.set_state('')
+
+#     schema = DbUser()
+#     schema = await schema.get_schema()
+#     moders = await schema.query.where(schema.role.in_(['admin', 'moder'])).gino.all()
+
+#     mailing = await MailingSchema.query.where(MailingSchema.message_id == message_id).gino.first()
+
+#     if mailing and moders:
+#         recepients = 'Всем пользователям' if message.text == '0' else f'Пользователям: {users}'
+
+#         for moder in moders:
+#             if (moder.user_id != message.from_user.id):
+#                 await bot.send_message(
+#                     chat_id=moder.user_id,
+#                     text=f'Администратор {message.from_user.full_name} отправил рассылку с текстом: \n{mailing.text} \n\n{recepients}'
+#                 )
+
+#     await message.answer('Рассылка завершена')
 
 
 @admin.message(StateIs('set_price'))

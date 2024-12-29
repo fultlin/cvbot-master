@@ -1,6 +1,5 @@
-from sqlalchemy import Column, BigInteger, String, Boolean, sql
+from sqlalchemy import Column, BigInteger, String, DateTime, sql
 from models.db_gino import TimedBaseModel
-
 
 class MailingSchema(TimedBaseModel):
     __tablename__ = 'mailings'
@@ -9,5 +8,6 @@ class MailingSchema(TimedBaseModel):
     user_id = Column(BigInteger, unique=False)
     message_id = Column(BigInteger, unique=True)
     text = Column(String)
+    scheduled_time = Column(DateTime)
 
     query: sql.Select
