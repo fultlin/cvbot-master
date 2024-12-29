@@ -8,7 +8,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKe
 
 import re
 
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import Command, CommandObject, StateFilter
 
 from middlewares.google_sheet import SheetMiddleware
 from models.quick_commands import DbUser, DbMessage, DbSetting, DbPay, DbRecent, FirstRecent, SecondRecent, ThirdRecent
@@ -24,6 +24,9 @@ from models.schemas.settings import SettingSchema
 
 from keyboards.main import get_manage_user_kb, get_back_kb
 from keyboards.boss import get_etap_out, get_reach_out, set_reach_pout, ease_link_kb, boss_mark
+
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
 
 admin = Router()
 admin.message.filter(RoleIs(['admin']))
@@ -246,103 +249,78 @@ async def editText(callback: CallbackQuery, bot: Bot) -> None:
     )
     await user.set_state('gdum')
 
-@admin.callback_query(F.data == 'edit_photo')
-async def editPhoto(callback: CallbackQuery, bot: Bot) -> None:
-    user_id = callback.from_user.id
-    user = DbUser(user_id=user_id)
+# Определяем группу состояний
+class PhotoStates(StatesGroup):
+    waiting_for_key = State()
+    waiting_for_photo = State()
 
-    if not user:
-        return
-    # Отображаем список доступных ключей
+# Хэндлер для выбора ключа
+@admin.callback_query(F.data == 'edit_photo')
+async def editPhoto(callback: CallbackQuery, bot: Bot, state: FSMContext) -> None:
+    user_id = callback.from_user.id
     keys_display = "\n".join([f"<code>{key}</code>" for key in keys])
 
     await bot.send_message(
         chat_id=user_id,
-        text=f'Укажите ключ сообщения для редактирования изображения: <code>ключ</code> \n\nДоступные ключи:\n{keys_display}',
+        text=f"Укажите ключ сообщения для редактирования изображения:\n\nДоступные ключи:\n{keys_display}",
         parse_mode='HTML'
     )
-    await user.set_state('edit_photo_key')
 
+    await state.set_state(PhotoStates.waiting_for_key)
 
-@admin.message(StateIs('edit_photo_key'))
-async def setPhotoKey(message: Message, bot: Bot) -> None:
-    user_id = message.from_user.id
-    user = DbUser(user_id=user_id)
+# Хэндлер для получения ключа
+@admin.message(StateFilter(PhotoStates.waiting_for_key))
+async def set_photo_key(message: Message, state: FSMContext):
     key = message.text.strip()
-    
     msg = DbMessage(key=key)
     db_message = await msg.select_message()
 
     if not db_message:
         await message.reply(f"Сообщение с ключом '{key}' не найдено.")
-        await user.set_state('')  # Сбрасываем состояние
+        await state.clear()  # Завершаем состояние
         return
 
-    # Просим пользователя прикрепить фото
+    # Сохраняем ключ в FSM-контексте
+    await state.update_data(key=key)
+
     await message.reply(
         f"Прикрепите новое изображение для ключа <code>{key}</code>.",
         parse_mode='HTML'
     )
-    await user.set_state(f'add_photo_{key}')  # Устанавливаем состояние с ключом
 
+    # Устанавливаем следующее состояние
+    await state.set_state(PhotoStates.waiting_for_photo)
 
-@admin.message(StateIs('add_photo_*'))
-async def handle_photo(message: Message, bot: Bot):   
-    user_id = message.from_user.id
-    user = DbUser(user_id=user_id)
-
-    current_state = await user.get_state()
-    key = current_state.split('_')[-1]
+# Хэндлер для получения фото
+@admin.message(StateFilter(PhotoStates.waiting_for_photo), F.photo)
+async def handle_photo(message: Message, state: FSMContext, bot: Bot):
+    # Получаем данные из контекста FSM
+    data = await state.get_data()
+    key = data.get("key")
 
     if not key:
-        await message.reply("Ключ не найден. Пожалуйста, сначала установите ключ.")
+        await message.reply("Ключ не найден. Пожалуйста, начните сначала.")
+        await state.clear()  
         return
 
     photo = message.photo[-1]
     file_info = await bot.get_file(photo.file_id)
-    image_path = f"media/{photo.file_id}.png"
-    
+    image_path = f"media/{key}.png"
+
     await bot.download_file(file_info.file_path, destination=image_path)
 
     msg = DbMessage(key=key)
-    update_successful = msg.update_record(image_path=image_path)
+    update_successful = await msg.update_record(image_path=image_path)
 
     if update_successful:
-        await message.answer(f"Фото успешно загружено и сохранено как {image_path} для ключа <code>{key}</code>.", parse_mode='HTML')
+        await message.answer(
+            f"Фото успешно загружено и сохранено как {image_path} для ключа <code>{key}</code>.",
+            parse_mode='HTML'
+        )
     else:
-        print(update_successful)
         await message.answer("Не удалось обновить запись в базе данных.", parse_mode='HTML')
 
-# @admin.message(StateIs(f'edit_photo_'), lambda message: message.photo is not None)
-# async def update_photo(message: Message, bot: Bot) -> None:
-#     user_id = message.from_user.id
-#     user = DbUser(user_id=user_id)
-
-#     state = await user.get_state()
-#     key = state.replace('edit_photo_', '')
-
-#     msg = DbMessage(key=key)
-#     db_message = await msg.select_message()
-
-#     if not db_message:
-#         await message.reply(f"Сообщение с ключом '{key}' не найдено.", parse_mode='HTML')
-#         await user.set_state('')
-#         return
-
-#     photo = message.photo[-1]
-#     file_path = f"media/{key}.png"
-#     await photo.download(destination=file_path)
-
-#     # Удаляем старое изображение (если существует)
-#     if db_message.image_path:
-#         try:
-#             os.remove(db_message.image_path)
-#         except FileNotFoundError:
-#             pass
-
-#     # Обновляем путь к изображению в базе данных
-#     await msg.update_record(image_path=file_path)
-#     await message.answer(f"Фото успешно обновлено и сохранено как {file_path}", parse_mode='HTML')
+    await state.clear()
 
 @admin.message(StateIs('gdum'))
 async def checkkl(message: Message, bot: Bot) -> None:
